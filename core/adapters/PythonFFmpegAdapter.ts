@@ -2,32 +2,37 @@ import {
   IFFmpegAdapter,
   IVideoMergeOptions,
   IVideoProcessingResult,
+  IProcessSpawner,
+  IAppConfig,
 } from '../interfaces/IVideoProcessing';
-import { spawn, ChildProcess } from 'child_process';
-import * as path from 'path';
 
 /**
  * Adapter for Python FFmpeg integration
- * Spawns Python child process to handle FFmpeg operations
+ * Uses injected process spawner to communicate with Python child process
+ * Demonstrates Adapter pattern - wraps external Python process communication
  */
 export class PythonFFmpegAdapter implements IFFmpegAdapter {
-  private pythonPath: string;
-  private scriptPath: string;
+  private processSpawner: IProcessSpawner;
+  private config: IAppConfig;
 
-  constructor(pythonPath: string = 'python', scriptPath?: string) {
-    this.pythonPath = pythonPath;
-    this.scriptPath =
-      scriptPath ||
-      path.join(__dirname, '../../src/videomerger/video_processor_cli.py');
+  /**
+   * Constructor with dependency injection
+   * @param processSpawner - Injected process spawner for creating child processes
+   * @param config - Injected application configuration
+   */
+  constructor(processSpawner: IProcessSpawner, config: IAppConfig) {
+    this.processSpawner = processSpawner;
+    this.config = config;
   }
 
   /**
    * Check if FFmpeg is available by calling Python script
+   * @returns Promise resolving to availability status
    */
   async isAvailable(): Promise<boolean> {
     try {
       const result = await this.executePythonScript(['--check-ffmpeg']);
-      return result.stdout.includes('available');
+      return result.exitCode === 0 && result.stdout.includes('available');
     } catch (error) {
       return false;
     }
@@ -35,6 +40,7 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
 
   /**
    * Get FFmpeg version
+   * @returns Promise resolving to version string
    */
   async getVersion(): Promise<string> {
     try {
@@ -47,13 +53,18 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
 
   /**
    * Execute FFmpeg command via Python
+   * @param args - Command arguments
+   * @returns Promise resolving to command output
    */
   async execute(args: string[]): Promise<{ stdout: string; stderr: string }> {
-    return this.executePythonScript(['--execute', ...args]);
+    const result = await this.executePythonScript(['--execute', ...args]);
+    return { stdout: result.stdout, stderr: result.stderr };
   }
 
   /**
    * Merge videos using Python FFmpeg wrapper
+   * @param options - Merge options
+   * @returns Promise resolving to processing result
    */
   async mergeVideos(
     options: IVideoMergeOptions
@@ -77,14 +88,21 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
 
       const result = await this.executePythonScript(args);
 
-      return {
-        success: true,
-        outputPath: options.outputPath,
-        metadata: {
-          path: options.outputPath,
-          size: 0, // Will be populated by file system
-        },
-      };
+      if (result.exitCode === 0) {
+        return {
+          success: true,
+          outputPath: options.outputPath,
+          metadata: {
+            path: options.outputPath,
+            size: 0,
+          },
+        };
+      } else {
+        return {
+          success: false,
+          error: result.stderr || 'Unknown error occurred',
+        };
+      }
     } catch (error) {
       return {
         success: false,
@@ -94,36 +112,16 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
   }
 
   /**
-   * Execute Python script with arguments
+   * Execute Python script with arguments using injected process spawner
+   * @param args - Script arguments
+   * @returns Promise resolving to process output
    */
   private executePythonScript(
     args: string[]
-  ): Promise<{ stdout: string; stderr: string }> {
-    return new Promise((resolve, reject) => {
-      const process = spawn(this.pythonPath, [this.scriptPath, ...args]);
-
-      let stdout = '';
-      let stderr = '';
-
-      process.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      process.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      process.on('close', (code) => {
-        if (code === 0) {
-          resolve({ stdout, stderr });
-        } else {
-          reject(new Error(`Python process exited with code ${code}: ${stderr}`));
-        }
-      });
-
-      process.on('error', (error) => {
-        reject(error);
-      });
-    });
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    return this.processSpawner.spawn(this.config.pythonPath, [
+      this.config.pythonScriptPath,
+      ...args,
+    ]);
   }
 }

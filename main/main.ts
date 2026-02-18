@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import { container } from '../core/container';
 import { PythonFFmpegAdapter } from '../core/adapters/PythonFFmpegAdapter';
+import { NodeProcessSpawner } from '../core/adapters/NodeProcessSpawner';
 import { FileSystemVideoRepository } from '../core/repositories/FileSystemVideoRepository';
 import { FFmpegProcessingStrategy } from '../core/strategies/VideoProcessingStrategies';
 import { VideoProcessingService } from '../core/services/VideoProcessingService';
@@ -9,22 +10,45 @@ import { MergeVideosCommand } from '../core/commands/MergeVideosCommand';
 import {
   IVideoProcessingService,
   IVideoMergeOptions,
+  IAppConfig,
+  IProcessingObserver,
+  IProcessingEvent,
 } from '../core/interfaces/IVideoProcessing';
 
 let mainWindow: BrowserWindow | null = null;
 
-function setupDependencies(): void {
-  container.register(
-    'FFmpegAdapter',
-    () => new PythonFFmpegAdapter(),
-    true
-  );
+/**
+ * Application configuration
+ * Injected into services for framework-agnostic design
+ */
+const appConfig: IAppConfig = {
+  pythonPath: 'python',
+  pythonScriptPath: path.join(
+    __dirname,
+    '../../src/videomerger/video_processor_cli.py'
+  ),
+  supportedFormats: ['mp4', 'avi', 'mov', 'mkv', 'webm'],
+};
 
-  container.register(
-    'VideoRepository',
-    () => new FileSystemVideoRepository(),
-    true
-  );
+/**
+ * Setup dependency injection container
+ * Demonstrates how all dependencies are injected, not hardcoded
+ */
+function setupDependencies(): void {
+  container.register('AppConfig', () => appConfig, true);
+
+  container.register('ProcessSpawner', () => new NodeProcessSpawner(), true);
+
+  container.register('FFmpegAdapter', () => {
+    const spawner = container.resolve<NodeProcessSpawner>('ProcessSpawner');
+    const config = container.resolve<IAppConfig>('AppConfig');
+    return new PythonFFmpegAdapter(spawner, config);
+  }, true);
+
+  container.register('VideoRepository', () => {
+    const config = container.resolve<IAppConfig>('AppConfig');
+    return new FileSystemVideoRepository(config);
+  }, true);
 
   container.register('VideoProcessingStrategy', () => {
     const adapter = container.resolve<PythonFFmpegAdapter>('FFmpegAdapter');
@@ -35,9 +59,12 @@ function setupDependencies(): void {
     const repository = container.resolve<FileSystemVideoRepository>('VideoRepository');
     const strategy = container.resolve<FFmpegProcessingStrategy>('VideoProcessingStrategy');
     return new VideoProcessingService(repository, strategy);
-  });
+  }, true);
 }
 
+/**
+ * Create the main application window
+ */
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -63,12 +90,32 @@ function createWindow(): void {
   });
 }
 
+/**
+ * Observer for processing events
+ * Forwards events to renderer process via IPC
+ */
+class IPCProcessingObserver implements IProcessingObserver {
+  onEvent(event: IProcessingEvent): void {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('processing-event', event);
+    }
+  }
+}
+
+/**
+ * Setup IPC handlers for communication with renderer
+ * This is the IPC abstraction layer
+ */
 function setupIPC(): void {
+  const observer = new IPCProcessingObserver();
+  const service = container.resolve<IVideoProcessingService>('VideoProcessingService');
+  service.subscribe(observer);
+
   ipcMain.handle('select-video-files', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: 'Videos', extensions: ['mp4', 'avi', 'mov', 'mkv', 'webm'] },
+        { name: 'Videos', extensions: appConfig.supportedFormats },
       ],
     });
     return result.filePaths;
@@ -83,20 +130,16 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('validate-videos', async (event, paths: string[]) => {
-    const service = container.resolve<IVideoProcessingService>('VideoProcessingService');
     return await service.validateVideos(paths);
   });
 
   ipcMain.handle('get-video-info', async (event, path: string) => {
-    const service = container.resolve<IVideoProcessingService>('VideoProcessingService');
     return await service.getVideoInfo(path);
   });
 
   ipcMain.handle('merge-videos', async (event, options: IVideoMergeOptions) => {
-    const service = container.resolve<IVideoProcessingService>('VideoProcessingService');
     const ffmpegAdapter = container.resolve<PythonFFmpegAdapter>('FFmpegAdapter');
     const repository = container.resolve<FileSystemVideoRepository>('VideoRepository');
-
     const command = new MergeVideosCommand(options, ffmpegAdapter, repository);
     return await command.execute();
   });

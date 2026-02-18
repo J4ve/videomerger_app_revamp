@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 declare global {
   interface Window {
@@ -9,6 +9,7 @@ declare global {
       getVideoInfo: (path: string) => Promise<any>;
       mergeVideos: (options: any) => Promise<any>;
       checkFFmpeg: () => Promise<{ available: boolean; version: string }>;
+      onProcessingEvent: (callback: (event: any) => void) => void;
     };
   }
 }
@@ -18,9 +19,15 @@ const App: React.FC = () => {
   const [outputPath, setOutputPath] = useState<string>('');
   const [status, setStatus] = useState<string>('Ready');
   const [ffmpegStatus, setFFmpegStatus] = useState<string>('Checking...');
+  const [processingEvents, setProcessingEvents] = useState<any[]>([]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     checkFFmpeg();
+    
+    window.electronAPI.onProcessingEvent((event) => {
+      setProcessingEvents((prev) => [...prev, event]);
+      setStatus(event.message || event.type);
+    });
   }, []);
 
   const checkFFmpeg = async () => {
@@ -56,7 +63,9 @@ const App: React.FC = () => {
       return;
     }
 
+    setProcessingEvents([]);
     setStatus('Merging videos...');
+    
     const result = await window.electronAPI.mergeVideos({
       inputPaths: selectedFiles,
       outputPath: outputPath,
@@ -126,6 +135,19 @@ const App: React.FC = () => {
         <div className="status-panel">
           <strong>Status:</strong> {status}
         </div>
+
+        {processingEvents.length > 0 && (
+          <div className="card">
+            <h3>Processing Events:</h3>
+            <ul className="event-list">
+              {processingEvents.map((event, index) => (
+                <li key={index}>
+                  <strong>{event.type}:</strong> {event.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </main>
     </div>
   );

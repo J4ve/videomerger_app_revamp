@@ -2,28 +2,37 @@ import {
   IVideoRepository,
   IVideoMetadata,
   IVideoProcessingResult,
+  IAppConfig,
 } from '../interfaces/IVideoProcessing';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 /**
  * File system based video repository
- * Handles video file operations and metadata
+ * Demonstrates Repository pattern - abstracts data access behind interface
+ * Uses injected configuration for supported formats
  */
 export class FileSystemVideoRepository implements IVideoRepository {
-  private supportedFormats = ['mp4', 'avi', 'mov', 'mkv', 'webm'];
+  private config: IAppConfig;
+
+  /**
+   * Constructor with dependency injection
+   * @param config - Injected application configuration
+   */
+  constructor(config: IAppConfig) {
+    this.config = config;
+  }
 
   /**
    * Validate a video file
+   * @param filePath - Path to video file
+   * @returns Promise resolving to validation result
    */
   async validate(filePath: string): Promise<boolean> {
     try {
-      // Check if file exists
       await fs.access(filePath);
-
-      // Check file extension
       const ext = path.extname(filePath).toLowerCase().substring(1);
-      return this.supportedFormats.includes(ext);
+      return this.config.supportedFormats.includes(ext);
     } catch (error) {
       return false;
     }
@@ -31,6 +40,8 @@ export class FileSystemVideoRepository implements IVideoRepository {
 
   /**
    * Get video metadata
+   * @param filePath - Path to video file
+   * @returns Promise resolving to video metadata
    */
   async getMetadata(filePath: string): Promise<IVideoMetadata> {
     try {
@@ -48,11 +59,10 @@ export class FileSystemVideoRepository implements IVideoRepository {
   }
 
   /**
-   * Save video processing result (for logging/history)
+   * Save video processing result
+   * @param result - The processing result to save
    */
   async save(result: IVideoProcessingResult): Promise<void> {
-    // This could be extended to save processing history to a database
-    // For now, we just ensure the output file exists
     if (result.success && result.outputPath) {
       try {
         await fs.access(result.outputPath);

@@ -163,3 +163,20 @@ body {
   color: #667eea;
   margin-right: 0.5rem;
 }
+
+.event-list {
+  list-style: none;
+}
+
+.event-list li {
+  padding: 0.5rem;
+  background-color: #3d3d3d;
+  margin-bottom: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.event-list li strong {
+  color: #667eea;
+  margin-right: 0.5rem;
+}
