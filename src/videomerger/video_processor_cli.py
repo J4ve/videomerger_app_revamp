@@ -81,13 +81,13 @@ def merge_videos(input_paths, output_path, quality='medium', overwrite=False):
             '-c:v', 'libx264',
             '-preset', 'medium',
         ]
-        
+
         cmd.extend(quality_settings.get(quality, quality_settings['medium']))
         cmd.extend(['-c:a', 'aac'])
-        
+
         if overwrite:
             cmd.append('-y')
-        
+
         cmd.append(output_path)
 
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -123,19 +123,19 @@ def main():
 
     if args.check_ffmpeg:
         sys.exit(0 if check_ffmpeg() else 1)
-    
+
     elif args.version:
         get_ffmpeg_version()
         sys.exit(0)
-    
+
     elif args.merge:
         if not args.inputs or not args.output:
             print('Error: --inputs and --output are required for merge', file=sys.stderr)
             sys.exit(1)
-        
+
         success = merge_videos(args.inputs, args.output, args.quality, args.overwrite)
         sys.exit(0 if success else 1)
-    
+
     else:
         parser.print_help()
         sys.exit(1)
