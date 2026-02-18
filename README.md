@@ -240,14 +240,17 @@ class Service {
 
 #### Future Extensibility
 
-The core business logic is designed to be reusable beyond the desktop app:
+The desktop app's core business logic is designed to be reusable beyond Electron:
 
-**Web API (FastAPI/Flask) - Planned:**
+**Future Web API (Planned):**
+
+The same TypeScript core from the desktop app could power a Node.js/Express web API:
+
 ```typescript
-// Desktop: Electron DI container
+// Desktop App: Electron with DI container
 container.register('VideoProcessingService', () => new VideoProcessingService(...));
 
-// Web API: Express/FastAPI uses same core
+// Future: Node.js/Express API using same core business logic
 app.post('/merge', async (req, res) => {
   const service = new VideoProcessingService(httpRepository, cloudStrategy);
   const result = await service.mergeVideos(req.body);
@@ -255,8 +258,11 @@ app.post('/merge', async (req, res) => {
 });
 ```
 
-**Mobile Apps - Planned:**
-Mobile apps can call a web API built with the same core logic, enabling video processing through a cloud server.
+**Mobile Apps (Planned):**
+
+Mobile apps can call a cloud-based API built with the desktop app's core logic, enabling server-side video processing.
+
+*Note: The existing Flask web app (in `src/videomerger/`) is separate from this planned architecture. The goal is to demonstrate how the desktop app's clean architecture enables code reuse across multiple platforms.*
 
 See [DESKTOP_README.md](DESKTOP_README.md) for detailed architecture documentation and pattern explanations.
 
