@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Merger App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Video Merger Application</h1>
+            <p>Merge multiple videos into one seamlessly</p>
+        </header>
+
+        <main>
+            <section class="upload-section">
+                <h2>Upload Videos</h2>
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="videoInput" multiple accept="video/*" hidden>
+                    <label for="videoInput" class="upload-label">
+                        <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <span>Click to select videos or drag and drop</span>
+                        <span class="upload-hint">Supported formats: MP4, AVI, MOV, MKV, WebM</span>
+                    </label>
+                </div>
+
+                <div id="fileList" class="file-list"></div>
+
+                <div class="actions" id="actions" style="display: none;">
+                    <input type="text" id="outputName" placeholder="Output filename (optional)" value="merged_video.mp4">
+                    <button id="uploadBtn" class="btn btn-primary">Upload Videos</button>
+                    <button id="mergeBtn" class="btn btn-success" style="display: none;">Merge Videos</button>
+                </div>
+            </section>
+
+            <section class="status-section">
+                <div id="statusMessage" class="status-message"></div>
+                <div id="progressBar" class="progress-bar" style="display: none;">
+                    <div class="progress-fill"></div>
+                </div>
+            </section>
+
+            <section class="result-section" id="resultSection" style="display: none;">
+                <h2>Merged Video Ready</h2>
+                <div id="downloadLink"></div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 Video Merger App | SE2 Project</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
