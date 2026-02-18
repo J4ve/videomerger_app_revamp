@@ -1,0 +1,53 @@
+{
+  "name": "videomerger-desktop",
+  "version": "0.1.0",
+  "description": "Desktop application for merging multiple videos using Electron + React + Python",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "start": "npm run build:electron && electron .",
+    "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
+    "dev:react": "webpack serve --config webpack.renderer.config.js --mode development",
+    "dev:electron": "wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .",
+    "build": "npm run build:react && npm run build:electron",
+    "build:react": "webpack --config webpack.renderer.config.js --mode production",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "test": "jest",
+    "lint": "eslint electron/ src/",
+    "format": "prettier --write \"electron/**/*.ts\" \"src/**/*.{ts,tsx}\""
+  },
+  "keywords": [
+    "electron",
+    "react",
+    "video",
+    "merger",
+    "desktop"
+  ],
+  "author": "Video Merger Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "@types/react": "^18.2.46",
+    "@types/react-dom": "^18.2.18",
+    "@typescript-eslint/eslint-plugin": "^6.17.0",
+    "@typescript-eslint/parser": "^6.17.0",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "css-loader": "^6.8.1",
+    "electron": "^28.1.0",
+    "eslint": "^8.56.0",
+    "eslint-plugin-react": "^7.33.2",
+    "html-webpack-plugin": "^5.6.0",
+    "prettier": "^3.1.1",
+    "style-loader": "^3.3.3",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.3.3",
+    "wait-on": "^7.2.0",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^4.15.1"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist/electron",
+    "rootDir": "./electron",
+    "lib": ["ES2020"]
+  },
+  "include": ["electron/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
