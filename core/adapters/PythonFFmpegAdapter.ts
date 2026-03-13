@@ -67,7 +67,8 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
    * @returns Promise resolving to processing result
    */
   async mergeVideos(
-    options: IVideoMergeOptions
+    options: IVideoMergeOptions,
+    onProgress?: (output: string) => void
   ): Promise<IVideoProcessingResult> {
     try {
       const args = [
@@ -86,7 +87,7 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
         args.push('--overwrite');
       }
 
-      const result = await this.executePythonScript(args);
+      const result = await this.executePythonScript(args, onProgress, onProgress);
 
       if (result.exitCode === 0) {
         return {
@@ -117,11 +118,15 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
    * @returns Promise resolving to process output
    */
   private executePythonScript(
-    args: string[]
+    args: string[],
+    onStdout?: (data: string) => void,
+    onStderr?: (data: string) => void
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    return this.processSpawner.spawn(this.config.pythonPath, [
-      this.config.pythonScriptPath,
-      ...args,
-    ]);
+    return this.processSpawner.spawn(
+      this.config.pythonPath, 
+      [this.config.pythonScriptPath, ...args],
+      onStdout,
+      onStderr
+    );
   }
 }

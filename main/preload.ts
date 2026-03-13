@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVideoInfo: (path: string) => ipcRenderer.invoke('get-video-info', path),
   mergeVideos: (options: any) => ipcRenderer.invoke('merge-videos', options),
   checkFFmpeg: () => ipcRenderer.invoke('check-ffmpeg'),
+  openFolder: (path: string) => ipcRenderer.invoke('open-folder', path),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings: any) => ipcRenderer.invoke('save-settings', settings),
   onProcessingEvent: (callback: (event: any) => void) => {
     ipcRenderer.on('processing-event', (_event, data) => callback(data));
   },

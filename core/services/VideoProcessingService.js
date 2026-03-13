@@ -1,0 +1,119 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.VideoProcessingService = void 0;
+const ProcessingEventEmitter_1 = require("../observers/ProcessingEventEmitter");
+/**
+ * Main video processing service
+ * Contains framework-agnostic business logic
+ * Implements Observer pattern to notify subscribers of processing events
+ */
+class VideoProcessingService {
+    /**
+     * Constructor with dependency injection
+     * @param repository - Injected video repository
+     * @param strategy - Injected processing strategy
+     */
+    constructor(repository, strategy) {
+        this.repository = repository;
+        this.strategy = strategy;
+        this.eventEmitter = new ProcessingEventEmitter_1.ProcessingEventEmitter();
+    }
+    /**
+     * Merge multiple videos
+     * @param options - Merge options
+     * @returns Promise resolving to processing result
+     */
+    async mergeVideos(options) {
+        if (!options.inputPaths || options.inputPaths.length < 2) {
+            const error = new Error('At least 2 videos are required for merging');
+            this.emitEvent({
+                type: 'error',
+                message: error.message,
+                error,
+            });
+            return {
+                success: false,
+                error: error.message,
+            };
+        }
+        this.emitEvent({
+            type: 'started',
+            message: 'Starting video merge process',
+        });
+        try {
+            const result = await this.strategy.process(options);
+            if (result.success) {
+                this.emitEvent({
+                    type: 'complete',
+                    message: 'Video merge completed successfully',
+                    result,
+                });
+            }
+            else {
+                this.emitEvent({
+                    type: 'error',
+                    message: result.error || 'Merge failed',
+                    error: new Error(result.error),
+                });
+            }
+            return result;
+        }
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.emitEvent({
+                type: 'error',
+                message: errorMessage,
+                error: error instanceof Error ? error : new Error(errorMessage),
+            });
+            return {
+                success: false,
+                error: errorMessage,
+            };
+        }
+    }
+    /**
+     * Validate video files
+     * @param paths - Array of file paths
+     * @returns Promise resolving to validation result
+     */
+    async validateVideos(paths) {
+        for (const path of paths) {
+            const isValid = await this.repository.validate(path);
+            if (!isValid) {
+                return false;
+            }
+        }
+        return true;
+    }
+    /**
+     * Get video information
+     * @param path - Path to video file
+     * @returns Promise resolving to video metadata
+     */
+    async getVideoInfo(path) {
+        return this.repository.getMetadata(path);
+    }
+    /**
+     * Subscribe to processing events
+     * @param observer - Observer to notify
+     */
+    subscribe(observer) {
+        this.eventEmitter.subscribe(observer);
+    }
+    /**
+     * Unsubscribe from processing events
+     * @param observer - Observer to remove
+     */
+    unsubscribe(observer) {
+        this.eventEmitter.unsubscribe(observer);
+    }
+    /**
+     * Emit processing event to all observers
+     * @param event - Event to emit
+     */
+    emitEvent(event) {
+        this.eventEmitter.notify(event);
+    }
+}
+exports.VideoProcessingService = VideoProcessingService;
+//# sourceMappingURL=VideoProcessingService.js.map

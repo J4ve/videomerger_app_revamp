@@ -32,7 +32,16 @@ export class FileSystemVideoRepository implements IVideoRepository {
     try {
       await fs.access(filePath);
       const ext = path.extname(filePath).toLowerCase().substring(1);
-      return this.config.supportedFormats.includes(ext);
+      if (!this.config.supportedFormats.includes(ext)) {
+        return false;
+      }
+      
+      const stats = await fs.stat(filePath);
+      if (this.config.maxFileSizeMb && stats.size > this.config.maxFileSizeMb * 1024 * 1024) {
+        return false;
+      }
+      
+      return true;
     } catch (error) {
       return false;
     }
@@ -69,6 +78,18 @@ export class FileSystemVideoRepository implements IVideoRepository {
       } catch (error) {
         throw new Error(`Output file not found: ${result.outputPath}`);
       }
+    }
+  }
+
+  /**
+   * Delete a file
+   * @param filePath - Path to the file
+   */
+  async deleteFile(filePath: string): Promise<void> {
+    try {
+      await fs.unlink(filePath);
+    } catch (error) {
+      // Ignore errors if file doesn't exist
     }
   }
 }

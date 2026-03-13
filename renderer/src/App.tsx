@@ -1,4 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import FileSelector from './components/FileSelector';
+import MergeButton from './components/MergeButton';
+import ProgressBar from './components/ProgressBar';
+import OutputViewer from './components/OutputViewer';
+import SettingsPanel from './components/SettingsPanel';
 
 declare global {
   interface Window {
@@ -9,6 +14,9 @@ declare global {
       getVideoInfo: (path: string) => Promise<any>;
       mergeVideos: (options: any) => Promise<any>;
       checkFFmpeg: () => Promise<{ available: boolean; version: string }>;
+      openFolder: (path: string) => Promise<void>;
+      getSettings: () => Promise<any>;
+      saveSettings: (settings: any) => Promise<void>;
       onProcessingEvent: (callback: (event: any) => void) => void;
     };
   }
@@ -19,14 +27,24 @@ const App: React.FC = () => {
   const [outputPath, setOutputPath] = useState<string>('');
   const [status, setStatus] = useState<string>('Ready');
   const [ffmpegStatus, setFFmpegStatus] = useState<string>('Checking...');
-  const [processingEvents, setProcessingEvents] = useState<any[]>([]);
+  const [isMerging, setIsMerging] = useState<boolean>(false);
+  const [mergeComplete, setMergeComplete] = useState<boolean>(false);
+  const [progress, setProgress] = useState<number>(0);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
 
   useEffect(() => {
     checkFFmpeg();
     
     window.electronAPI.onProcessingEvent((event) => {
-      setProcessingEvents((prev) => [...prev, event]);
       setStatus(event.message || event.type);
+      if (event.type === 'progress') {
+        setProgress(event.percent || 0);
+      } else if (event.type === 'error') {
+        setIsMerging(false);
+      } else if (event.type === 'complete') {
+        setIsMerging(false);
+        setMergeComplete(true);
+      }
     });
   }, []);
 
@@ -41,8 +59,22 @@ const App: React.FC = () => {
 
   const handleSelectFiles = async () => {
     const files = await window.electronAPI.selectVideoFiles();
-    setSelectedFiles(files);
-    setStatus(`Selected ${files.length} file(s)`);
+    if (files && files.length > 0) {
+      const uniqueFiles = Array.from(new Set([...selectedFiles, ...files]));
+      setSelectedFiles(uniqueFiles);
+      setStatus(`Added ${files.length} file(s). Total: ${uniqueFiles.length}`);
+    }
+  };
+
+  const handleRemoveFile = (indexToRemove: number) => {
+    setSelectedFiles(selectedFiles.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handleReorderFiles = (startIndex: number, endIndex: number) => {
+    const result = Array.from(selectedFiles);
+    const [removed] = result.splice(startIndex, 1);
+    result.splice(endIndex, 0, removed);
+    setSelectedFiles(result);
   };
 
   const handleSelectOutput = async () => {
@@ -63,28 +95,68 @@ const App: React.FC = () => {
       return;
     }
 
-    setProcessingEvents([]);
+    setIsMerging(true);
+    setMergeComplete(false);
+    setProgress(0);
+    setStatus('Validating files...');
+
+    const isValid = await window.electronAPI.validateVideos(selectedFiles);
+    if (!isValid) {
+      setStatus('Validation failed. Make sure files exist and are valid videos.');
+      setIsMerging(false);
+      return;
+    }
+
     setStatus('Merging videos...');
     
+    // The merge runs via IPC, and we wait for events for progress
     const result = await window.electronAPI.mergeVideos({
       inputPaths: selectedFiles,
       outputPath: outputPath,
-      quality: 'high',
-      overwrite: true,
     });
 
-    if (result.success) {
-      setStatus('Videos merged successfully!');
-    } else {
+    if (!result.success) {
       setStatus(`Error: ${result.error}`);
+      setIsMerging(false);
     }
+  };
+
+  const handleOpenFolder = () => {
+    if (outputPath) {
+      window.electronAPI.openFolder(outputPath);
+    }
+  };
+
+  const handleReset = () => {
+    setSelectedFiles([]);
+    setOutputPath('');
+    setIsMerging(false);
+    setMergeComplete(false);
+    setProgress(0);
+    setStatus('Ready');
   };
 
   return (
     <div className="app">
-      <header className="header">
+      <header className="header" style={{ position: 'relative' }}>
         <h1>Video Merger</h1>
         <p className="subtitle">Desktop Application</p>
+        <button 
+          onClick={() => setShowSettings(!showSettings)}
+          style={{
+            position: 'absolute',
+            top: '2rem',
+            right: '2rem',
+            background: 'none',
+            border: 'none',
+            color: 'white',
+            cursor: 'pointer',
+            fontSize: '1rem',
+            opacity: 0.8
+          }}
+        >
+          ⚙️ Settings
+        </button>
       </header>
 
       <main className="main">
@@ -93,60 +165,49 @@ const App: React.FC = () => {
           <span className="status-value">{ffmpegStatus}</span>
         </div>
 
-        <div className="card">
-          <h2>Select Videos</h2>
-          <button onClick={handleSelectFiles} className="button">
-            Choose Video Files
-          </button>
-          {selectedFiles.length > 0 && (
-            <div className="file-list">
-              <h3>Selected Files ({selectedFiles.length}):</h3>
-              <ul>
-                {selectedFiles.map((file, index) => (
-                  <li key={index}>{file}</li>
-                ))}
-              </ul>
+        {showSettings ? (
+          <SettingsPanel onClose={() => setShowSettings(false)} />
+        ) : !mergeComplete ? (
+          <>
+            <FileSelector
+              selectedFiles={selectedFiles}
+              onSelectFiles={handleSelectFiles}
+              onRemoveFile={handleRemoveFile}
+              onReorderFiles={handleReorderFiles}
+            />
+
+            <div className="card">
+              <h2>Output Location</h2>
+              <button onClick={handleSelectOutput} className="button" disabled={isMerging}>
+                Choose Save Location
+              </button>
+              {outputPath && (
+                <div className="output-path">
+                  <strong>Output:</strong> {outputPath}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="card">
-          <h2>Output Location</h2>
-          <button onClick={handleSelectOutput} className="button">
-            Choose Save Location
-          </button>
-          {outputPath && (
-            <div className="output-path">
-              <strong>Output:</strong> {outputPath}
+            {isMerging && (
+              <ProgressBar progress={progress} statusText={status} />
+            )}
+
+            <MergeButton
+              onMerge={handleMerge}
+              disabled={selectedFiles.length < 2 || !outputPath}
+              isMerging={isMerging}
+            />
+
+            <div className="status-panel">
+              <strong>Status:</strong> {status}
             </div>
-          )}
-        </div>
-
-        <div className="card">
-          <button
-            onClick={handleMerge}
-            className="button button-primary"
-            disabled={selectedFiles.length < 2 || !outputPath}
-          >
-            Merge Videos
-          </button>
-        </div>
-
-        <div className="status-panel">
-          <strong>Status:</strong> {status}
-        </div>
-
-        {processingEvents.length > 0 && (
-          <div className="card">
-            <h3>Processing Events:</h3>
-            <ul className="event-list">
-              {processingEvents.map((event, index) => (
-                <li key={index}>
-                  <strong>{event.type}:</strong> {event.message}
-                </li>
-              ))}
-            </ul>
-          </div>
+          </>
+        ) : (
+          <OutputViewer
+            outputPath={outputPath}
+            onOpenFolder={handleOpenFolder}
+            onReset={handleReset}
+          />
         )}
       </main>
     </div>

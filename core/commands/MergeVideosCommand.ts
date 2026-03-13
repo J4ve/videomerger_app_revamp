@@ -50,12 +50,19 @@ export class MergeVideosCommand implements ICommand {
         };
       }
 
-      // Execute merge operation
-      const result = await this.ffmpegAdapter.mergeVideos(this.options);
+      // Execute merge operation, mapping ffmpeg output streams to progress events
+      // The Python FFmpeg script prints progress details which we can stream.
+      // E.g. frame=  100 fps= 20 q=28.0 size=    2048kB time=00:00:10.00 bitrate=1677.7kbits/s speed=2.00x
+      const result = await this.ffmpegAdapter.mergeVideos(this.options, (output) => {
+          // If we had a mechanism to pipe events out of the command, we'd fire them here.
+          // For now, this is hooked into IVideoProcessingStrategy later.
+      });
 
       // Save result
       if (result.success) {
         await this.repository.save(result);
+      } else {
+        await this.repository.deleteFile(this.options.outputPath);
       }
 
       return result;

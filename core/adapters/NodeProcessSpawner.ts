@@ -10,11 +10,15 @@ export class NodeProcessSpawner implements IProcessSpawner {
    * Spawn a child process
    * @param command - Command to execute
    * @param args - Command arguments
+   * @param onStdout - Optional callback for stdout stream data
+   * @param onStderr - Optional callback for stderr stream data
    * @returns Promise resolving to process output
    */
   async spawn(
     command: string,
-    args: string[]
+    args: string[],
+    onStdout?: (data: string) => void,
+    onStderr?: (data: string) => void
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve, reject) => {
       const process = spawn(command, args);
@@ -23,11 +27,15 @@ export class NodeProcessSpawner implements IProcessSpawner {
       let stderr = '';
 
       process.stdout.on('data', (data) => {
-        stdout += data.toString();
+        const str = data.toString();
+        stdout += str;
+        if (onStdout) onStdout(str);
       });
 
       process.stderr.on('data', (data) => {
-        stderr += data.toString();
+        const str = data.toString();
+        stderr += str;
+        if (onStderr) onStderr(str);
       });
 
       process.on('close', (code) => {

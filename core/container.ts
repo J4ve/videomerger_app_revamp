@@ -1,4 +1,4 @@
-import { IContainer } from '../interfaces/IVideoProcessing';
+import { IContainer } from './interfaces/IVideoProcessing';
 
 /**
  * Simple Dependency Injection Container

@@ -3,8 +3,8 @@
   "compilerOptions": {
     "module": "commonjs",
     "moduleResolution": "node",
-    "outDir": "./dist/main",
-    "rootDir": "./main",
+    "outDir": "./dist",
+    "rootDir": ".",
     "lib": ["ES2020"]
   },
   "include": ["main/**/*", "core/**/*"],

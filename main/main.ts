@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
+import Store = require('electron-store');
 import { container } from '../core/container';
 import { PythonFFmpegAdapter } from '../core/adapters/PythonFFmpegAdapter';
 import { NodeProcessSpawner } from '../core/adapters/NodeProcessSpawner';
@@ -16,26 +17,28 @@ import {
 } from '../core/interfaces/IVideoProcessing';
 
 let mainWindow: BrowserWindow | null = null;
+const store = new Store();
 
 /**
  * Application configuration
  * Injected into services for framework-agnostic design
  */
-const appConfig: IAppConfig = {
-  pythonPath: 'python',
-  pythonScriptPath: path.join(
-    __dirname,
-    '../../src/videomerger/video_processor_cli.py'
-  ),
-  supportedFormats: ['mp4', 'avi', 'mov', 'mkv', 'webm'],
-};
+function getAppConfig(): IAppConfig {
+  return {
+    pythonPath: 'python',
+    pythonScriptPath: path.join(__dirname, '../../src/videomerger/video_processor_cli.py'),
+    supportedFormats: ['mp4', 'avi', 'mov', 'mkv', 'webm'],
+    maxFileSizeMb: store.get('maxFileSizeMb', 500) as number,
+  };
+}
 
 /**
  * Setup dependency injection container
  * Demonstrates how all dependencies are injected, not hardcoded
  */
 function setupDependencies(): void {
-  container.register('AppConfig', () => appConfig, true);
+  const config = getAppConfig();
+  container.register('AppConfig', () => config, true);
 
   container.register('ProcessSpawner', () => new NodeProcessSpawner(), true);
 
@@ -112,10 +115,11 @@ function setupIPC(): void {
   service.subscribe(observer);
 
   ipcMain.handle('select-video-files', async () => {
+    const config = getAppConfig();
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
       filters: [
-        { name: 'Videos', extensions: appConfig.supportedFormats },
+        { name: 'Videos', extensions: config.supportedFormats },
       ],
     });
     return result.filePaths;
@@ -138,10 +142,7 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('merge-videos', async (event, options: IVideoMergeOptions) => {
-    const ffmpegAdapter = container.resolve<PythonFFmpegAdapter>('FFmpegAdapter');
-    const repository = container.resolve<FileSystemVideoRepository>('VideoRepository');
-    const command = new MergeVideosCommand(options, ffmpegAdapter, repository);
-    return await command.execute();
+    return await service.mergeVideos(options);
   });
 
   ipcMain.handle('check-ffmpeg', async () => {
@@ -149,6 +150,22 @@ function setupIPC(): void {
     const available = await adapter.isAvailable();
     const version = available ? await adapter.getVersion() : 'not found';
     return { available, version };
+  });
+
+  ipcMain.handle('open-folder', async (event, folderPath: string) => {
+    await shell.showItemInFolder(folderPath);
+  });
+
+  ipcMain.handle('get-settings', async () => {
+    return store.store;
+  });
+
+  ipcMain.handle('save-settings', async (event, settings: any) => {
+    store.set(settings);
+    // Re-initialize DI container to pick up new config
+    container.clear();
+    setupDependencies();
+    return true;
   });
 }
 

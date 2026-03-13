@@ -111,6 +111,12 @@ export interface IVideoRepository {
    * @param result - The processing result to save
    */
   save(result: IVideoProcessingResult): Promise<void>;
+
+  /**
+   * Delete a file
+   * @param path - Path to the file to delete
+   */
+  deleteFile(path: string): Promise<void>;
 }
 
 /**
@@ -139,9 +145,13 @@ export interface IVideoProcessingStrategy {
   /**
    * Process videos according to the strategy
    * @param options - Merge options
+   * @param onProgress - Optional callback for processing status updates
    * @returns Promise resolving to processing result
    */
-  process(options: IVideoMergeOptions): Promise<IVideoProcessingResult>;
+  process(
+    options: IVideoMergeOptions,
+    onProgress?: (output: string) => void
+  ): Promise<IVideoProcessingResult>;
 }
 
 /**
@@ -171,9 +181,13 @@ export interface IFFmpegAdapter {
   /**
    * Merge videos using FFmpeg
    * @param options - Merge options
+   * @param onProgress - Optional callback for ffmpeg output line streams
    * @returns Promise resolving to processing result
    */
-  mergeVideos(options: IVideoMergeOptions): Promise<IVideoProcessingResult>;
+  mergeVideos(
+    options: IVideoMergeOptions,
+    onProgress?: (output: string) => void
+  ): Promise<IVideoProcessingResult>;
 }
 
 /**
@@ -185,11 +199,15 @@ export interface IProcessSpawner {
    * Spawn a child process
    * @param command - Command to execute
    * @param args - Command arguments
+   * @param onStdout - Optional callback for stdout stream data
+   * @param onStderr - Optional callback for stderr stream data
    * @returns Promise resolving to process output
    */
   spawn(
     command: string,
-    args: string[]
+    args: string[],
+    onStdout?: (data: string) => void,
+    onStderr?: (data: string) => void
   ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
 }
 
@@ -201,6 +219,7 @@ export interface IAppConfig {
   pythonScriptPath: string;
   supportedFormats: string[];
   tempDir?: string;
+  maxFileSizeMb?: number;
 }
 
 /**

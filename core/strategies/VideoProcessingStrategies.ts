@@ -19,8 +19,11 @@ export class FFmpegProcessingStrategy implements IVideoProcessingStrategy {
   /**
    * Process videos using FFmpeg
    */
-  async process(options: IVideoMergeOptions): Promise<IVideoProcessingResult> {
-    return this.ffmpegAdapter.mergeVideos(options);
+  async process(
+    options: IVideoMergeOptions,
+    onProgress?: (output: string) => void
+  ): Promise<IVideoProcessingResult> {
+    return this.ffmpegAdapter.mergeVideos(options, onProgress);
   }
 }
 
@@ -38,7 +41,10 @@ export class WebAPIProcessingStrategy implements IVideoProcessingStrategy {
   /**
    * Process videos via web API (for future web/mobile implementation)
    */
-  async process(options: IVideoMergeOptions): Promise<IVideoProcessingResult> {
+  async process(
+    options: IVideoMergeOptions,
+    onProgress?: (output: string) => void
+  ): Promise<IVideoProcessingResult> {
     // This would make HTTP requests to a web API
     // Not implemented now, but shows how the architecture supports it
     throw new Error('Web API processing not implemented yet');
