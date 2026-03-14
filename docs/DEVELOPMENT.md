@@ -273,7 +273,21 @@ logger.error('Error message')
 
 ## Docker Development
 
-### Build and Run
+> **Note:** You must have **Docker Desktop** installed and running to use these features on Windows. If you are on Linux or macOS, the standard **Docker** engine setup is sufficient.
+
+### Building the Desktop Application Executable (Windows/No-Node)
+
+If you need to build the Windows `.exe` standalone application but don't have Node.js installed locally, use the Docker Builder service (which runs `electron-builder` under Wine):
+
+```bash
+docker compose run --rm builder
+```
+
+The resulting executable will be saved in the `dist-bin/` directory. Note: You must run this from a standard Windows command prompt, not inside the Docker Desktop VM.
+
+### Web Application Development (Flask)
+
+If you are developing the Flask api, you can build and run it via Compose:
 
 ```bash
 docker-compose up --build

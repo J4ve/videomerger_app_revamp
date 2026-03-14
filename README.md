@@ -138,15 +138,31 @@ Choose the application you want to run:
 6. **Open your browser**
    Navigate to `http://localhost:5000`
 
-## 🐳 Docker Deployment (Web Application Only)
+## 🐳 Docker Usage
 
-### Using Docker Compose (Recommended)
+> **Note:** You must have **Docker Desktop** installed and running if you are on Windows. On Linux or macOS, the standard **Docker** engine is sufficient.
 
-```bash
-docker-compose up -d
-```
+### Building the Desktop Application Executable
 
-### Using Docker directly
+If you don't have Node.js or `npm` installed on your host system (e.g., on Windows), you can compile the Desktop Application into a standalone `.exe` using Docker Compose.
+
+1. Open a standard Windows Command Prompt (cmd) or PowerShell.
+2. Navigate to your project folder:
+   ```bash
+   cd C:\path\to\videomerger_app_revamp
+   ```
+3. Ensure Docker Desktop is running in the background.
+4. Run the builder service:
+   ```bash
+   docker compose run --rm builder
+   ```
+   *(If `docker compose` is not recognized, try `docker-compose run --rm builder`)*
+
+Docker will automatically download the necessary tools, build the app, and output your `VideoMerger Setup X.X.X.exe` into a new `dist-bin/` folder inside your project.
+
+### Running the Web Application using Docker directly
+
+If you prefer to run the Flask Web Application instead, you can build and run it using the Docker CLI:
 
 ```bash
 docker build -t videomerger .

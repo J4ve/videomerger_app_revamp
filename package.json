@@ -12,9 +12,27 @@
     "build:main": "tsc -p tsconfig.main.json",
     "preview": "vite preview",
     "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder --win",
     "test": "vitest",
     "lint": "eslint main/ renderer/ core/",
     "format": "prettier --write \"**/*.{ts,tsx}\""
+  },
+  "build": {
+    "appId": "com.videomerger.app",
+    "productName": "VideoMerger",
+    "directories": {
+      "output": "dist-bin"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "files": [
+      "dist/**/*",
+      "renderer/**/*",
+      "core/**/*",
+      "src/**/*",
+      "package.json"
+    ]
   },
   "keywords": [
     "electron",
@@ -38,6 +56,7 @@
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
     "eslint": "^8.56.0",
     "eslint-plugin-react": "^7.33.2",
     "jsdom": "^28.1.0",

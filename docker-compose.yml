@@ -1,15 +1,18 @@
 version: '3.8'
 
 services:
-  web:
-    build: .
-    ports:
-      - "5000:5000"
+  # This service provides a Node.js builder using Wine so Windows users 
+  # can build the Electron executable (.exe) without installing Node.js locally.
+  builder:
+    image: electronuserland/builder:wine
+    working_dir: /project
     volumes:
-      - ./src/videomerger/static/uploads:/app/src/videomerger/static/uploads
-      - ./src/videomerger/static/outputs:/app/src/videomerger/static/outputs
-    environment:
-      - FLASK_ENV=production
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
-      - MAX_CONTENT_LENGTH=524288000
-    restart: unless-stopped
+      # Map the project folder back to /project
+      - .:/project
+      # Using a named volume for node_modules avoids Windows symlink issues inside Linux docker!
+      - node_modules:/project/node_modules
+    # Command installs dependencies, builds the app, and creates the .exe in dist-bin/
+    command: bash -c "npm install && npm run package"
+
+volumes:
+  node_modules:
