@@ -27,5 +27,23 @@ services:
     # Command installs dependencies, builds the app, and creates the .exe in dist-bin/
     command: bash -c "npm install && npm run package"
 
+  # Containerized Dev Environment for the Desktop App (Node.js + Python)
+  dev-desktop:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      # Use a named volume to isolate the linux node_modules from Windows
+      - dev_node_modules:/app/node_modules
+    ports:
+      # Expose Vite dev server port
+      - "3000:3000"
+    environment:
+      # To show the Electron Window on Windows/Mac, forward it to the host machine's X-server (like VcXsrv)
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+    command: bash -c "npm install && pip install --break-system-packages -r requirements.txt && npm run dev"
+
 volumes:
   node_modules:
+  dev_node_modules:

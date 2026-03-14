@@ -8,10 +8,11 @@
    ```bash
    git clone https://github.com/J4ve/videomerger_app_revamp.git
    cd videomerger_app_revamp
-   ```
+   ```git reset
+   
 
 2. **Install Node.js & npm** (required for Desktop App development)
-   - **Windows**: Download the LTS version from [nodejs.org](https://nodejs.org/) and install it.
+   - **Windows**: Download the LTS version from [nodejs.org](htgit statps://nodejs.org/) and install it.
    - **macOS**: `brew install node`
    - **Ubuntu/Debian**: `sudo apt-get install nodejs npm`
    
@@ -284,6 +285,17 @@ logger.error('Error message')
 ## Docker Development
 
 > **Note:** You must have **Docker Desktop** installed and running to use these features on Windows. If you are on Linux or macOS, the standard **Docker** engine setup is sufficient.
+
+### Containerized Desktop App Development (`npm run dev`)
+If you want to run the live development environment (`npm run dev`) *without* installing Node.js/Python natively, we provide a unified Docker container config.
+
+1. Ensure Docker Desktop is running.
+2. If you want the actual Desktop GUI window to open, you need an X-Server running on your host (e.g. **VcXsrv** for Windows or **XQuartz** for Mac) configured to "Disable access control" so Docker can send the window to your screen.
+3. Start the live-reload dev server:
+   ```bash
+   docker compose run --rm -p 3000:3000 dev-desktop
+   ```
+   *Note:* Even if the Electron window fails to appear (due to X-server configuration), you can still view and develop the React frontend by going to `http://localhost:3000` in your host browser!
 
 ### Building the Desktop Application Executable (Windows/No-Node)
 

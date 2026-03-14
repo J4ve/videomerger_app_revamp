@@ -160,6 +160,15 @@ If you don't have Node.js or `npm` installed on your host system (e.g., on Windo
 
 Docker will automatically download the necessary tools, build the app, and output your `VideoMerger Setup X.X.X.exe` into a new `dist-bin/` folder inside your project.
 
+### Running Live Development via Docker (`npm run dev`)
+
+If you want to work on the code and run the live development server but do not want to natively install Node.js:
+
+```bash
+docker compose run --rm -p 3000:3000 dev-desktop
+```
+This will containerize Node.js and Python and run `npm run dev` for you. You can see the React UI on `http://localhost:3000`. *(Note: to see the actual Electron application window popup, you must configure an X-Server like VcXsrv).*
+
 ### Running the Web Application using Docker directly
 
 If you prefer to run the Flask Web Application instead, you can build and run it using the Docker CLI:
