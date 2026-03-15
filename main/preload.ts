@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectSaveLocation: () => ipcRenderer.invoke('select-save-location'),
   validateVideos: (paths: string[]) => ipcRenderer.invoke('validate-videos', paths),
   getVideoInfo: (path: string) => ipcRenderer.invoke('get-video-info', path),
+  getArrangeVideoMetadata: (paths: string[]) => ipcRenderer.invoke('get-arrange-video-metadata', paths),
   mergeVideos: (options: any) => ipcRenderer.invoke('merge-videos', options),
   checkFFmpeg: () => ipcRenderer.invoke('check-ffmpeg'),
   checkFFmpegDetails: () => ipcRenderer.invoke('check-ffmpeg-details'),

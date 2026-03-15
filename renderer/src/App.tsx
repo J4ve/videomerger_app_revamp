@@ -7,6 +7,11 @@ declare global {
       selectSaveLocation: () => Promise<string | undefined>;
       validateVideos: (paths: string[]) => Promise<boolean>;
       getVideoInfo: (path: string) => Promise<any>;
+      getArrangeVideoMetadata: (paths: string[]) => Promise<Record<string, {
+        duration: number | null;
+        modifiedMs: number | null;
+        size: number | null;
+      }>>;
       mergeVideos: (options: any) => Promise<any>;
       checkFFmpeg: () => Promise<{ available: boolean; version: string }>;
       checkFFmpegDetails: () => Promise<{
@@ -42,6 +47,21 @@ const FPS_OPTIONS = [
   { value: '30', label: '30 FPS' },
   { value: '60', label: '60 FPS' },
 ];
+
+type SortField = 'none' | 'name' | 'size' | 'duration' | 'date';
+
+interface ArrangeVideoMeta {
+  duration: number | null;
+  modifiedMs: number | null;
+  size: number | null;
+}
+
+interface YouTubeQuickPreset {
+  name: string;
+  title: string;
+  description: string;
+  privacy: string;
+}
 
 const App: React.FC = () => {
   // Wizard state
@@ -79,15 +99,25 @@ const App: React.FC = () => {
   const [ytPrivacy, setYtPrivacy] = useState<string>('private');
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadResult, setUploadResult] = useState<any>(null);
+  const [finalizeConfigView, setFinalizeConfigView] = useState<'merge' | 'youtube'>('merge');
+  const [ytPresetName, setYtPresetName] = useState<string>('');
+  const [ytQuickPresets, setYtQuickPresets] = useState<YouTubeQuickPreset[]>([]);
+  const [selectedYtPresetName, setSelectedYtPresetName] = useState<string>('');
 
   // Arrange sort state
-  const [sortBy, setSortBy] = useState<string>('none');
+  const [sortBy, setSortBy] = useState<SortField>('none');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [isArrangementLockMode, setIsArrangementLockMode] = useState<boolean>(false);
+  const [allowDuplicate, setAllowDuplicate] = useState<boolean>(true);
+  const [fileLocks, setFileLocks] = useState<boolean[]>([]);
+  const [arrangeVideoMeta, setArrangeVideoMeta] = useState<Record<string, ArrangeVideoMeta>>({});
+  const [previewVideoIndex, setPreviewVideoIndex] = useState<number>(0);
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
   // Dashboard state
   const [showDashboard, setShowDashboard] = useState<boolean>(false);
+  const [dashboardInitialTab, setDashboardInitialTab] = useState<'general' | 'youtube' | 'ffmpeg' | 'account'>('general');
 
   useEffect(() => {
     checkFFmpeg();
@@ -111,6 +141,21 @@ const App: React.FC = () => {
     });
   }, []);
 
+  useEffect(() => {
+    const loadQuickPresets = async () => {
+      try {
+        const settings = await window.electronAPI.getSettings();
+        const presets = settings?.ytQuickPresets;
+        if (Array.isArray(presets)) {
+          setYtQuickPresets(presets.filter((p: any) => p && typeof p.name === 'string'));
+        }
+      } catch {
+        // noop
+      }
+    };
+    loadQuickPresets();
+  }, []);
+
   const canProceedStep1 = selectedFiles.length >= 2;
   const canProceedStep2 = selectedFiles.length >= 2;
 
@@ -118,6 +163,83 @@ const App: React.FC = () => {
     () => selectedFiles.map((file) => file.split('\\').pop() || file),
     [selectedFiles]
   );
+
+  const previewVideoPath = selectedFiles[previewVideoIndex] || '';
+  const previewVideoName = selectedFileNames[previewVideoIndex] || '';
+  const previewVideoMeta = arrangeVideoMeta[previewVideoPath];
+  const previewVideoSrc = useMemo(() => {
+    if (!previewVideoPath) return '';
+    if (/^(https?:|blob:|data:|local-video:)/i.test(previewVideoPath)) return previewVideoPath;
+    return `local-video://preview?path=${encodeURIComponent(previewVideoPath)}`;
+  }, [previewVideoPath]);
+
+  useEffect(() => {
+    setFileLocks((current) => {
+      if (current.length === selectedFiles.length) return current;
+      return selectedFiles.map((_, idx) => current[idx] || false);
+    });
+  }, [selectedFiles]);
+
+  useEffect(() => {
+    let active = true;
+    const loadArrangeMeta = async () => {
+      if (selectedFiles.length === 0) {
+        if (active) setArrangeVideoMeta({});
+        return;
+      }
+
+      const fallbackWithBasicInfo = async () => {
+        const entries = await Promise.all(selectedFiles.map(async (filePath) => {
+          try {
+            const info = await window.electronAPI.getVideoInfo(filePath);
+            return [filePath, {
+              duration: null,
+              modifiedMs: null,
+              size: typeof info?.size === 'number' ? info.size : null,
+            } as ArrangeVideoMeta] as const;
+          } catch {
+            return [filePath, {
+              duration: null,
+              modifiedMs: null,
+              size: null,
+            } as ArrangeVideoMeta] as const;
+          }
+        }));
+        if (active) {
+          setArrangeVideoMeta(Object.fromEntries(entries));
+        }
+      };
+
+      try {
+        const metadataFn = (window.electronAPI as any).getArrangeVideoMetadata;
+        if (typeof metadataFn !== 'function') {
+          await fallbackWithBasicInfo();
+          return;
+        }
+
+        const data = await metadataFn(selectedFiles);
+        if (active) {
+          setArrangeVideoMeta(data || {});
+        }
+      } catch {
+        await fallbackWithBasicInfo();
+      }
+    };
+    loadArrangeMeta();
+    return () => {
+      active = false;
+    };
+  }, [selectedFiles]);
+
+  useEffect(() => {
+    if (selectedFiles.length === 0) {
+      setPreviewVideoIndex(0);
+      return;
+    }
+    if (previewVideoIndex >= selectedFiles.length) {
+      setPreviewVideoIndex(selectedFiles.length - 1);
+    }
+  }, [previewVideoIndex, selectedFiles.length]);
 
   const checkFFmpeg = async () => {
     try {
@@ -174,7 +296,14 @@ const App: React.FC = () => {
   };
 
   const handleRemoveFile = (indexToRemove: number) => {
-    setSelectedFiles(selectedFiles.filter((_, index) => index !== indexToRemove));
+    if (isArrangementLockMode && fileLocks[indexToRemove]) {
+      setStatus('Unlock this clip before removing it.');
+      return;
+    }
+    const nextFiles = selectedFiles.filter((_, index) => index !== indexToRemove);
+    const nextLocks = fileLocks.filter((_, index) => index !== indexToRemove);
+    setSelectedFiles(nextFiles);
+    setFileLocks(nextLocks);
   };
 
   // --- Drag and Drop on Dropzone ---
@@ -227,10 +356,38 @@ const App: React.FC = () => {
 
   // --- Arrange Reordering ---
   const handleReorderFiles = (startIndex: number, endIndex: number) => {
+    if (startIndex === endIndex) return;
+    if (isArrangementLockMode) {
+      if (fileLocks[startIndex] || fileLocks[endIndex]) {
+        setStatus('Locked clips cannot be moved.');
+        return;
+      }
+
+      const min = Math.min(startIndex, endIndex);
+      const max = Math.max(startIndex, endIndex);
+      for (let idx = min; idx <= max; idx += 1) {
+        if (idx !== startIndex && fileLocks[idx]) {
+          setStatus('Cannot move a clip across a locked position.');
+          return;
+        }
+      }
+    }
+
     const result = Array.from(selectedFiles);
+    const lockResult = Array.from(fileLocks);
     const [removed] = result.splice(startIndex, 1);
+    const [removedLock] = lockResult.splice(startIndex, 1);
     result.splice(endIndex, 0, removed);
+    lockResult.splice(endIndex, 0, removedLock);
     setSelectedFiles(result);
+    setFileLocks(lockResult);
+
+    setPreviewVideoIndex((current) => {
+      if (current === startIndex) return endIndex;
+      if (startIndex < endIndex && current > startIndex && current <= endIndex) return current - 1;
+      if (endIndex < startIndex && current >= endIndex && current < startIndex) return current + 1;
+      return current;
+    });
   };
 
   const handleMoveFileUp = (index: number) => {
@@ -245,6 +402,7 @@ const App: React.FC = () => {
 
   // Drag-and-drop reorder in arrange screen
   const handleSeqDragStart = (index: number) => {
+    if (isArrangementLockMode && fileLocks[index]) return;
     dragItem.current = index;
   };
 
@@ -260,42 +418,136 @@ const App: React.FC = () => {
     dragOverItem.current = null;
   };
 
+  const handlePreviewEnded = () => {
+    setPreviewVideoIndex((current) => {
+      if (selectedFiles.length === 0) return 0;
+      if (current >= selectedFiles.length - 1) return 0;
+      return current + 1;
+    });
+  };
+
   // Duplicate video in arrange
   const handleDuplicateFile = (index: number) => {
+    if (!allowDuplicate) {
+      setStatus('Duplicate is disabled. Enable it from the toolbar to use it.');
+      return;
+    }
     const newFiles = [...selectedFiles];
+    const newLocks = [...fileLocks];
     newFiles.splice(index + 1, 0, selectedFiles[index]);
+    newLocks.splice(index + 1, 0, false);
     setSelectedFiles(newFiles);
+    setFileLocks(newLocks);
+  };
+
+  const toggleFileLock = (index: number) => {
+    if (!isArrangementLockMode) {
+      setStatus('Enable "Lock arrangement" to lock positions.');
+      return;
+    }
+    setFileLocks((current) => current.map((locked, idx) => (idx === index ? !locked : locked)));
+  };
+
+  const getSortValue = (filePath: string, by: SortField): string | number | null => {
+    if (by === 'name') return (filePath.split('\\').pop() || filePath).toLowerCase();
+    if (by === 'size') return arrangeVideoMeta[filePath]?.size ?? null;
+    if (by === 'duration') return arrangeVideoMeta[filePath]?.duration ?? null;
+    if (by === 'date') return arrangeVideoMeta[filePath]?.modifiedMs ?? null;
+    return null;
+  };
+
+  const compareSort = (aPath: string, bPath: string, by: SortField, order: 'asc' | 'desc'): number => {
+    const aVal = getSortValue(aPath, by);
+    const bVal = getSortValue(bPath, by);
+    const direction = order === 'asc' ? 1 : -1;
+
+    const aMissing = aVal === null || aVal === undefined;
+    const bMissing = bVal === null || bVal === undefined;
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      return (aVal - bVal) * direction;
+    }
+
+    return String(aVal).localeCompare(String(bVal)) * direction;
+  };
+
+  const applySort = (by: SortField, order: 'asc' | 'desc') => {
+    if (by === 'none') return;
+
+    const currentPreviewPath = selectedFiles[previewVideoIndex] || '';
+
+    if (isArrangementLockMode) {
+      const unlocked = selectedFiles
+        .map((file, idx) => ({ file, locked: fileLocks[idx] }))
+        .filter((item) => !item.locked)
+        .map((item) => item.file)
+        .sort((a, b) => compareSort(a, b, by, order));
+
+      let unlockedCursor = 0;
+      const arranged = selectedFiles.map((file, idx) => {
+        if (fileLocks[idx]) return file;
+        const next = unlocked[unlockedCursor] || file;
+        unlockedCursor += 1;
+        return next;
+      });
+
+      setSelectedFiles(arranged);
+      const nextIndex = currentPreviewPath ? arranged.findIndex((path) => path === currentPreviewPath) : -1;
+      setPreviewVideoIndex(nextIndex >= 0 ? nextIndex : 0);
+      return;
+    }
+
+    const paired = selectedFiles.map((file, idx) => ({ file, lock: fileLocks[idx] || false }));
+    paired.sort((a, b) => compareSort(a.file, b.file, by, order));
+    const sortedFiles = paired.map((item) => item.file);
+    setSelectedFiles(sortedFiles);
+    setFileLocks(paired.map((item) => item.lock));
+    const nextIndex = currentPreviewPath ? sortedFiles.findIndex((path) => path === currentPreviewPath) : -1;
+    setPreviewVideoIndex(nextIndex >= 0 ? nextIndex : 0);
   };
 
   // Sorting
-  const handleSort = (by: string) => {
+  const handleSort = (by: SortField) => {
     setSortBy(by);
-    const sorted = [...selectedFiles];
-    if (by === 'name') {
-      sorted.sort((a, b) => {
-        const nameA = (a.split('\\').pop() || a).toLowerCase();
-        const nameB = (b.split('\\').pop() || b).toLowerCase();
-        return sortOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-      });
-    }
-    setSelectedFiles(sorted);
+    applySort(by, sortOrder);
   };
 
   const toggleSortOrder = () => {
     const newOrder = sortOrder === 'asc' ? 'desc' : 'asc';
     setSortOrder(newOrder);
-    if (sortBy !== 'none') {
-      // Re-apply sort with new order
-      const sorted = [...selectedFiles];
-      if (sortBy === 'name') {
-        sorted.sort((a, b) => {
-          const nameA = (a.split('\\').pop() || a).toLowerCase();
-          const nameB = (b.split('\\').pop() || b).toLowerCase();
-          return newOrder === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-        });
+    applySort(sortBy, newOrder);
+  };
+
+  const toggleArrangementMode = () => {
+    setIsArrangementLockMode((current) => {
+      const next = !current;
+      if (!next) {
+        setFileLocks((locks) => locks.map(() => false));
       }
-      setSelectedFiles(sorted);
-    }
+      return next;
+    });
+  };
+
+  const formatDuration = (seconds: number | null | undefined): string => {
+    if (seconds === null || seconds === undefined || Number.isNaN(seconds)) return 'Unknown';
+    const total = Math.max(0, Math.round(seconds));
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const formatDate = (millis: number | null | undefined): string => {
+    if (!millis) return 'Unknown';
+    return new Date(millis).toLocaleString();
+  };
+
+  const formatSize = (bytes: number | null | undefined): string => {
+    if (bytes === null || bytes === undefined) return 'Unknown';
+    const mb = bytes / (1024 * 1024);
+    return `${mb.toFixed(1)} MB`;
   };
 
   // --- Output & Merge ---
@@ -373,6 +625,67 @@ const App: React.FC = () => {
     }
   };
 
+  const persistYtQuickPresets = async (presets: YouTubeQuickPreset[]) => {
+    try {
+      const settings = await window.electronAPI.getSettings();
+      await window.electronAPI.saveSettings({
+        ...settings,
+        ytQuickPresets: presets,
+      });
+    } catch {
+      // noop
+    }
+  };
+
+  const handleSaveYtQuickPreset = async () => {
+    const name = ytPresetName.trim();
+    if (!name) {
+      setStatus('Preset name is required.');
+      return;
+    }
+
+    const newPreset: YouTubeQuickPreset = {
+      name,
+      title: ytTitle,
+      description: ytDescription,
+      privacy: ytPrivacy,
+    };
+
+    const nextPresets = [
+      ...ytQuickPresets.filter((preset) => preset.name.toLowerCase() !== name.toLowerCase()),
+      newPreset,
+    ];
+    setYtQuickPresets(nextPresets);
+    setSelectedYtPresetName(name);
+    await persistYtQuickPresets(nextPresets);
+    setStatus(`YouTube preset saved: ${name}`);
+  };
+
+  const handleLoadYtQuickPreset = () => {
+    const preset = ytQuickPresets.find((item) => item.name === selectedYtPresetName);
+    if (!preset) {
+      setStatus('Select a YouTube preset first.');
+      return;
+    }
+    setYtTitle(preset.title);
+    setYtDescription(preset.description);
+    setYtPrivacy(preset.privacy);
+    setStatus(`Loaded preset: ${preset.name}`);
+  };
+
+  const handleDeleteYtQuickPreset = async () => {
+    if (!selectedYtPresetName) {
+      setStatus('Select a YouTube preset to delete.');
+      return;
+    }
+
+    const nextPresets = ytQuickPresets.filter((preset) => preset.name !== selectedYtPresetName);
+    setYtQuickPresets(nextPresets);
+    setSelectedYtPresetName('');
+    await persistYtQuickPresets(nextPresets);
+    setStatus('YouTube preset deleted.');
+  };
+
   const handleReset = () => {
     setStep(1);
     setSelectedFiles([]);
@@ -386,6 +699,10 @@ const App: React.FC = () => {
     setYtPrivacy('private');
     setUploadResult(null);
     setStandardization({ resolution: 'original', fps: 'original' });
+    setFileLocks([]);
+    setArrangeVideoMeta({});
+    setIsArrangementLockMode(false);
+    setAllowDuplicate(true);
   };
 
   const handleBack = () => {
@@ -414,13 +731,7 @@ const App: React.FC = () => {
       return;
     }
 
-    if (step === 3) {
-      // Preview → Finalize
-      setStep(4);
-      return;
-    }
-
-    // Step 4: merge
+    // Step 3: finalize and merge
     await handleMerge();
   };
 
@@ -430,7 +741,7 @@ const App: React.FC = () => {
     return 'step-circle';
   };
 
-  const nextLabel = step === 1 ? 'Proceed' : step === 2 ? 'Preview' : step === 3 ? 'Finalize' : isMerging ? 'Merging...' : 'Start Merge';
+  const nextLabel = step === 1 ? 'Proceed' : step === 2 ? 'Finalize' : isMerging ? 'Merging...' : 'Start Merge';
 
   const resolutionLabel = RESOLUTION_OPTIONS.find(o => o.value === standardization.resolution)?.label || 'Original';
   const fpsLabel = FPS_OPTIONS.find(o => o.value === standardization.fps)?.label || 'Original';
@@ -509,6 +820,7 @@ const App: React.FC = () => {
               googleUser={googleUser}
               ffmpegDetails={ffmpegDetails}
               standardization={standardization}
+              initialTab={dashboardInitialTab}
               onStandardizationChange={setStandardization}
               onLogout={handleLogout}
               onLogin={handleGoogleLogin}
@@ -537,8 +849,6 @@ const App: React.FC = () => {
             <div className={getStepCircleClass(2)}>2</div>
             <div className={`step-line ${step >= 3 ? 'step-line-active' : ''}`} />
             <div className={getStepCircleClass(3)}>3</div>
-            <div className={`step-line ${step >= 4 ? 'step-line-active' : ''}`} />
-            <div className={getStepCircleClass(4)}>4</div>
           </div>
 
           <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -555,16 +865,27 @@ const App: React.FC = () => {
             </button>
             <button
               className="mini-btn"
-              onClick={() => setShowDashboard(true)}
+              onClick={() => {
+                setDashboardInitialTab('general');
+                setShowDashboard(true);
+              }}
               title="Dashboard & Settings"
               id="dashboard-btn"
             >
               ⚙
             </button>
             {isLoggedIn && googleUser && (
-              <div className="user-badge" title={googleUser.email}>
+              <button
+                className="user-badge user-badge-btn"
+                title={googleUser.email}
+                onClick={() => {
+                  setDashboardInitialTab('account');
+                  setShowDashboard(true);
+                }}
+                type="button"
+              >
                 {googleUser.name?.charAt(0) || '?'}
-              </div>
+              </button>
             )}
           </div>
         </header>
@@ -673,38 +994,6 @@ const App: React.FC = () => {
                     <span className="dropzone-subtitle">MP4, MOV, AVI, MKV, WEBM supported</span>
                   </div>
 
-                  {/* Video Standardization Dropdowns */}
-                  <div className="std-row">
-                    <label className="std-label">
-                      Resolution
-                      <select
-                        className="std-select"
-                        value={standardization.resolution}
-                        onChange={e => setStandardization(prev => ({ ...prev, resolution: e.target.value }))}
-                        id="resolution-select"
-                        data-testid="resolution-select"
-                      >
-                        {RESOLUTION_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="std-label">
-                      Frame Rate
-                      <select
-                        className="std-select"
-                        value={standardization.fps}
-                        onChange={e => setStandardization(prev => ({ ...prev, fps: e.target.value }))}
-                        id="fps-select"
-                        data-testid="fps-select"
-                      >
-                        {FPS_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
                   <div className="file-grid">
                     {selectedFiles.length === 0 ? (
                       <div className="empty-state">No videos selected yet.</div>
@@ -731,136 +1020,358 @@ const App: React.FC = () => {
               {step === 2 && (
                 <section className="panel fade-in">
                   <h2>Arrange sequence</h2>
-                  <p className="panel-subtitle">Move videos up or down, drag to rearrange, sort, or duplicate.</p>
+                  <p className="panel-subtitle">Preview, sort, and lock clip positions before final merge.</p>
 
                   <div className="sort-toolbar">
                     <span style={{ color: 'var(--olive-300)', fontSize: '0.88rem' }}>Sort:</span>
-                    <button
-                      className={`sort-btn ${sortBy === 'name' ? 'sort-btn-active' : ''}`}
-                      onClick={() => handleSort('name')}
-                      id="sort-by-name"
+                    <select
+                      className="std-select sort-select"
+                      value={sortBy}
+                      onChange={(e) => handleSort(e.target.value as SortField)}
+                      id="sort-by-select"
                     >
-                      By Name
-                    </button>
+                      <option value="none">None</option>
+                      <option value="name">Name</option>
+                      <option value="size">Size</option>
+                      <option value="duration">Duration</option>
+                      <option value="date">Date Modified</option>
+                    </select>
                     <button className="sort-btn" onClick={toggleSortOrder} id="sort-order-toggle">
                       {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
                     </button>
+                    <button
+                      className={`sort-btn ${isArrangementLockMode ? 'sort-btn-active' : ''}`}
+                      onClick={toggleArrangementMode}
+                      id="lock-arrangement-toggle"
+                    >
+                      {isArrangementLockMode ? 'Lock arrangement: ON' : 'Lock arrangement: OFF'}
+                    </button>
+                    <button
+                      className={`sort-btn ${allowDuplicate ? 'sort-btn-active' : ''}`}
+                      onClick={() => setAllowDuplicate((current) => !current)}
+                      id="allow-duplicate-toggle"
+                    >
+                      {allowDuplicate ? 'Duplicate: ON' : 'Duplicate: OFF'}
+                    </button>
                   </div>
 
-                  <div className="sequence-list">
-                    {selectedFileNames.map((file, index) => (
-                      <div
-                        key={`${file}-${index}`}
-                        className="sequence-item"
-                        draggable
-                        onDragStart={() => handleSeqDragStart(index)}
-                        onDragEnter={() => handleSeqDragEnter(index)}
-                        onDragEnd={handleSeqDragEnd}
-                        onDragOver={(e) => e.preventDefault()}
-                      >
-                        <span className="drag-handle" title="Drag to reorder">⠿</span>
-                        <span className="sequence-order">{index + 1}</span>
-                        <span className="file-name">{file}</span>
-                        <div className="sequence-actions">
-                          <button
-                            className="mini-btn"
-                            onClick={() => handleDuplicateFile(index)}
-                            disabled={isMerging}
-                            title="Duplicate this video"
-                            id={`dup-btn-${index}`}
-                          >
-                            Dup
-                          </button>
-                          <button
-                            className="mini-btn"
-                            onClick={() => handleMoveFileUp(index)}
-                            disabled={index === 0 || isMerging}
-                          >
-                            Up
-                          </button>
-                          <button
-                            className="mini-btn"
-                            onClick={() => handleMoveFileDown(index)}
-                            disabled={index === selectedFiles.length - 1 || isMerging}
-                          >
-                            Down
-                          </button>
-                          <button
-                            className="file-remove"
-                            onClick={() => handleRemoveFile(index)}
-                            disabled={isMerging}
-                            title="Remove"
-                          >
-                            ✕
-                          </button>
-                        </div>
+                  <div className="arrange-layout">
+                    <aside className="arrange-preview-panel">
+                      <h3>Clip Preview</h3>
+                      <div className="preview-player-box arrange-player-box">
+                        {previewVideoSrc ? (
+                          <video
+                            key={`arrange-${previewVideoSrc}`}
+                            className="preview-player"
+                            controls
+                            autoPlay
+                            preload="metadata"
+                            src={previewVideoSrc}
+                            onEnded={handlePreviewEnded}
+                          />
+                        ) : (
+                          <div className="preview-player-empty">Select a clip to preview.</div>
+                        )}
                       </div>
-                    ))}
+                      <div className="arrange-video-meta">
+                        <strong>{previewVideoName || 'None selected'}</strong>
+                        <span>Duration: {formatDuration(previewVideoMeta?.duration)}</span>
+                        <span>Date: {formatDate(previewVideoMeta?.modifiedMs)}</span>
+                        <span>Size: {formatSize(previewVideoMeta?.size)}</span>
+                      </div>
+                      <button
+                        className="file-remove arrange-remove-btn"
+                        onClick={() => handleRemoveFile(previewVideoIndex)}
+                        disabled={isMerging || !selectedFiles[previewVideoIndex] || (isArrangementLockMode && !!fileLocks[previewVideoIndex])}
+                      >
+                        Remove selected clip
+                      </button>
+                    </aside>
+
+                    <div className="sequence-list">
+                      {selectedFileNames.map((file, index) => (
+                        <div
+                          key={`${file}-${index}`}
+                          className={`sequence-item ${index === previewVideoIndex ? 'sequence-item-active' : ''}`}
+                          draggable={!isArrangementLockMode || !fileLocks[index]}
+                          onClick={() => setPreviewVideoIndex(index)}
+                          onDragStart={() => handleSeqDragStart(index)}
+                          onDragEnter={() => handleSeqDragEnter(index)}
+                          onDragEnd={handleSeqDragEnd}
+                          onDragOver={(e) => e.preventDefault()}
+                        >
+                          <span className="drag-handle" title="Drag to reorder">⠿</span>
+                          <span className="sequence-order">{index + 1}</span>
+                          <span className="file-name">{file}</span>
+                          <span className="sequence-meta-chip">{formatDuration(arrangeVideoMeta[selectedFiles[index]]?.duration)}</span>
+                          <div className="sequence-actions">
+                            <button
+                              className={`mini-btn ${fileLocks[index] ? 'mini-btn-lock-active' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFileLock(index);
+                              }}
+                              disabled={!isArrangementLockMode || isMerging}
+                              title="Lock position"
+                            >
+                              {fileLocks[index] ? 'Locked' : 'Lock'}
+                            </button>
+                            <button
+                              className="mini-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDuplicateFile(index);
+                              }}
+                              disabled={isMerging || !allowDuplicate}
+                              title="Duplicate this video"
+                              id={`dup-btn-${index}`}
+                            >
+                              Dup
+                            </button>
+                            <button
+                              className="mini-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveFileUp(index);
+                              }}
+                              disabled={index === 0 || isMerging || (isArrangementLockMode && (fileLocks[index] || fileLocks[index - 1]))}
+                            >
+                              Up
+                            </button>
+                            <button
+                              className="mini-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveFileDown(index);
+                              }}
+                              disabled={index === selectedFiles.length - 1 || isMerging || (isArrangementLockMode && (fileLocks[index] || fileLocks[index + 1]))}
+                            >
+                              Down
+                            </button>
+                            <button
+                              className="file-remove"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveFile(index);
+                              }}
+                              disabled={isMerging || (isArrangementLockMode && fileLocks[index])}
+                              title="Remove"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </section>
               )}
 
-              {/* Step 3: Preview */}
+              {/* Step 3: Finalize & Merge */}
               {step === 3 && (
                 <section className="panel fade-in">
-                  <h2>Preview merge settings</h2>
-                  <p className="panel-subtitle">Review your configuration before merging.</p>
-
-                  <div className="preview-summary">
-                    <div className="preview-block">
-                      <h3>Videos ({selectedFiles.length})</h3>
-                      <ol className="preview-file-list">
-                        {selectedFileNames.map((file, i) => (
-                          <li key={i}>{file}</li>
-                        ))}
-                      </ol>
-                    </div>
-                    <div className="preview-block">
-                      <h3>Standardization</h3>
-                      <div className="preview-meta">
-                        <span>Resolution:</span><span>{resolutionLabel}</span>
-                        <span>Frame Rate:</span><span>{fpsLabel}</span>
-                      </div>
-                    </div>
-                    {isLoggedIn && (
-                      <div className="preview-block">
-                        <h3>Account</h3>
-                        <p style={{ margin: 0, color: 'var(--olive-200)' }}>
-                          Signed in as {googleUser?.name || googleUser?.email || 'Google User'}
-                        </p>
-                        <p style={{ margin: '4px 0 0', color: 'var(--olive-300)', fontSize: '0.85rem' }}>
-                          YouTube upload will be available after merge.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </section>
-              )}
-
-              {/* Step 4: Finalize & Merge */}
-              {step === 4 && (
-                <section className="panel fade-in">
                   <h2>Finalize and merge</h2>
-                  <p className="panel-subtitle">Pick an output file path and start the merge process.</p>
+                  <p className="panel-subtitle">Preview the arranged clips and configure save/upload from one screen.</p>
 
-                  <div className="output-row">
-                    <button className="btn btn-secondary" onClick={handleSelectOutput} disabled={isMerging}>
-                      Choose save location
-                    </button>
-                    <div className="output-path-box">
-                      {outputPath || 'No output path selected yet'}
-                    </div>
-                  </div>
+                  <div className="finalize-layout">
+                    <div className="finalize-left">
+                      <div className="preview-player-wrap">
+                        <h3>Video Preview</h3>
+                        <div className="preview-player-box">
+                          {previewVideoSrc ? (
+                            <video
+                              key={previewVideoSrc}
+                              className="preview-player"
+                              controls
+                              autoPlay
+                              preload="metadata"
+                              src={previewVideoSrc}
+                              onEnded={handlePreviewEnded}
+                            />
+                          ) : (
+                            <div className="preview-player-empty">Select videos in earlier steps to preview here.</div>
+                          )}
+                        </div>
+                        <p className="preview-player-label">Now playing: {previewVideoName || 'None selected'}</p>
+                      </div>
 
-                  <div className="progress-card">
-                    <div className="progress-meta">
-                      <span>Progress</span>
-                      <span>{Math.round(progress)}%</span>
+                      <div className="preview-block">
+                        <h3>Arranged sequence ({selectedFiles.length})</h3>
+                        <ol className="preview-file-list selectable-preview-list">
+                          {selectedFileNames.map((file, i) => (
+                            <li key={`${file}-${i}`}>
+                              <button
+                                className={`preview-file-btn ${i === previewVideoIndex ? 'preview-file-btn-active' : ''}`}
+                                onClick={() => setPreviewVideoIndex(i)}
+                                type="button"
+                              >
+                                <span>{i + 1}.</span>
+                                <span>{file}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
                     </div>
-                    <div className="progress-track">
-                      <div className="progress-fill" style={{ width: `${Math.min(progress, 100)}%` }} />
+
+                    <div className="finalize-right">
+                      <div className="preview-block">
+                        <div className="config-switcher">
+                          <button
+                            className={`config-switch-btn ${finalizeConfigView === 'merge' ? 'config-switch-btn-active' : ''}`}
+                            onClick={() => setFinalizeConfigView('merge')}
+                            type="button"
+                          >
+                            Merge Settings
+                          </button>
+                          {isLoggedIn && (
+                            <button
+                              className={`config-switch-btn ${finalizeConfigView === 'youtube' ? 'config-switch-btn-active' : ''}`}
+                              onClick={() => setFinalizeConfigView('youtube')}
+                              type="button"
+                            >
+                              YouTube Settings
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="preview-block">
+                        <h3>Merge preview</h3>
+                        <div className="preview-meta">
+                          <span>Resolution:</span><span>{resolutionLabel}</span>
+                          <span>Frame Rate:</span><span>{fpsLabel}</span>
+                          <span>Clips:</span><span>{selectedFiles.length}</span>
+                        </div>
+                        {isLoggedIn && (
+                          <p style={{ margin: '10px 0 0', color: 'var(--olive-200)' }}>
+                            Signed in as {googleUser?.name || googleUser?.email || 'Google User'}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="preview-block">
+                        <h3>Save destination</h3>
+                        <div className="output-row">
+                          <button className="btn btn-secondary" onClick={handleSelectOutput} disabled={isMerging}>
+                            Choose save location
+                          </button>
+                          <div className="output-path-box">
+                            {outputPath || 'No output path selected yet'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="progress-card">
+                        <div className="progress-meta">
+                          <span>Progress</span>
+                          <span>{Math.round(progress)}%</span>
+                        </div>
+                        <div className="progress-track">
+                          <div className="progress-fill" style={{ width: `${Math.min(progress, 100)}%` }} />
+                        </div>
+                        <p className="status-line">{status}</p>
+                      </div>
+
+                      {isLoggedIn && finalizeConfigView === 'youtube' && (
+                        <div className="preview-block">
+                          <h3>YouTube quick setup</h3>
+                          <div className="yt-config yt-config-compact">
+                            <div className="yt-inline-row">
+                              <label>
+                                Title *
+                                <input
+                                  type="text"
+                                  value={ytTitle}
+                                  onChange={e => setYtTitle(e.target.value)}
+                                  placeholder="Video title"
+                                  className="yt-input"
+                                />
+                              </label>
+                              <label>
+                                Privacy
+                                <select value={ytPrivacy} onChange={e => setYtPrivacy(e.target.value)} className="std-select">
+                                  <option value="private">Private</option>
+                                  <option value="unlisted">Unlisted</option>
+                                  <option value="public">Public</option>
+                                </select>
+                              </label>
+                            </div>
+                            <label>
+                              Description
+                              <textarea
+                                value={ytDescription}
+                                onChange={e => setYtDescription(e.target.value)}
+                                placeholder="Short description"
+                                className="yt-input"
+                                rows={2}
+                              />
+                            </label>
+
+                            <div className="yt-preset-row">
+                              <label>
+                                Preset Name
+                                <input
+                                  type="text"
+                                  value={ytPresetName}
+                                  onChange={(e) => setYtPresetName(e.target.value)}
+                                  placeholder="e.g. Weekly Highlights"
+                                  className="yt-input"
+                                />
+                              </label>
+                              <button className="btn btn-secondary" type="button" onClick={handleSaveYtQuickPreset}>
+                                Save Preset
+                              </button>
+                            </div>
+
+                            <div className="yt-preset-row">
+                              <label>
+                                Load Preset
+                                <select
+                                  className="std-select"
+                                  value={selectedYtPresetName}
+                                  onChange={(e) => setSelectedYtPresetName(e.target.value)}
+                                >
+                                  <option value="">Select preset</option>
+                                  {ytQuickPresets.map((preset) => (
+                                    <option key={preset.name} value={preset.name}>{preset.name}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div className="yt-preset-actions">
+                                <button className="btn btn-secondary" type="button" onClick={handleLoadYtQuickPreset}>Load</button>
+                                <button className="btn btn-ghost" type="button" onClick={handleDeleteYtQuickPreset}>Delete</button>
+                              </div>
+                            </div>
+
+                            <div className="final-actions">
+                              <button className="btn btn-secondary" onClick={handleSelectOutput} disabled={isMerging}>
+                                Save
+                              </button>
+                              <button
+                                className="btn btn-primary"
+                                onClick={handleUploadToYouTube}
+                                disabled={isUploading || !ytTitle || !mergeComplete}
+                              >
+                                {isUploading ? 'Uploading...' : 'Upload'}
+                              </button>
+                            </div>
+                            {!mergeComplete && (
+                              <p style={{ margin: 0, color: 'var(--olive-300)', fontSize: '0.84rem' }}>
+                                Upload becomes available after merge completes.
+                              </p>
+                            )}
+                            {uploadResult && (
+                              <div className={uploadResult.success ? 'upload-success' : 'upload-error'}>
+                                {uploadResult.success
+                                  ? <span>Uploaded: <a href={uploadResult.url} target="_blank" rel="noreferrer">{uploadResult.url}</a></span>
+                                  : <span>{uploadResult.error}</span>}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <p className="status-line">{status}</p>
                   </div>
                 </section>
               )}
@@ -880,7 +1391,7 @@ const App: React.FC = () => {
                 isMerging ||
                 (step === 1 && !canProceedStep1) ||
                 (step === 2 && !canProceedStep2) ||
-                (step === 4 && !outputPath)
+                (step === 3 && !outputPath)
               }
             >
               {nextLabel}
@@ -898,13 +1409,14 @@ interface DashboardPanelProps {
   googleUser: any;
   ffmpegDetails: any;
   standardization: { resolution: string; fps: string };
+  initialTab: 'general' | 'youtube' | 'ffmpeg' | 'account';
   onStandardizationChange: (s: { resolution: string; fps: string }) => void;
   onLogout: () => void;
   onLogin: () => void;
 }
 
 const DashboardPanel: React.FC<DashboardPanelProps> = ({
-  isLoggedIn, googleUser, ffmpegDetails, standardization, onStandardizationChange, onLogout, onLogin
+  isLoggedIn, googleUser, ffmpegDetails, standardization, initialTab, onStandardizationChange, onLogout, onLogin
 }) => {
   const [settings, setSettings] = useState<any>({
     maxFileSizeMb: 500,
@@ -914,10 +1426,12 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
     ytDefaultTitle: '',
     ytDefaultDescription: '',
   });
-  const [presets, setPresets] = useState<any[]>([]);
-  const [presetName, setPresetName] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('general');
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     loadSettings();
@@ -928,7 +1442,6 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
       const data = await window.electronAPI.getSettings();
       if (data) {
         setSettings((prev: any) => ({ ...prev, ...data }));
-        if (data.presets) setPresets(data.presets);
       }
     } catch {
       // fallback
@@ -937,7 +1450,7 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
   const handleSave = async () => {
     setIsSaving(true);
-    await window.electronAPI.saveSettings({ ...settings, presets });
+    await window.electronAPI.saveSettings({ ...settings });
     onStandardizationChange({
       resolution: settings.defaultResolution || 'original',
       fps: settings.defaultFps || 'original',
@@ -945,33 +1458,8 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
     setIsSaving(false);
   };
 
-  const handleAddPreset = () => {
-    if (!presetName.trim()) return;
-    const newPreset = {
-      name: presetName,
-      resolution: standardization.resolution,
-      fps: standardization.fps,
-    };
-    setPresets([...presets, newPreset]);
-    setPresetName('');
-  };
-
-  const handleLoadPreset = (preset: any) => {
-    onStandardizationChange({ resolution: preset.resolution, fps: preset.fps });
-    setSettings((prev: any) => ({
-      ...prev,
-      defaultResolution: preset.resolution,
-      defaultFps: preset.fps,
-    }));
-  };
-
-  const handleDeletePreset = (index: number) => {
-    setPresets(presets.filter((_, i) => i !== index));
-  };
-
   const tabs = [
     { id: 'general', label: '⚙ General' },
-    { id: 'presets', label: '📋 Presets' },
     { id: 'youtube', label: '📺 YouTube' },
     { id: 'ffmpeg', label: '🎬 FFmpeg' },
     { id: 'account', label: '👤 Account' },
@@ -1030,48 +1518,6 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
             </label>
             <button className="btn btn-primary" onClick={handleSave} disabled={isSaving} style={{ marginTop: 16 }}>
               {isSaving ? 'Saving...' : 'Save Settings'}
-            </button>
-          </div>
-        )}
-
-        {activeTab === 'presets' && (
-          <div className="dash-section">
-            <h3>Standardization Presets</h3>
-            <p className="panel-subtitle">Save and load resolution/FPS combinations.</p>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <input
-                type="text"
-                value={presetName}
-                onChange={e => setPresetName(e.target.value)}
-                placeholder="Preset name"
-                className="yt-input"
-                style={{ flex: 1 }}
-              />
-              <button className="btn btn-secondary" onClick={handleAddPreset}>Save Current</button>
-            </div>
-            {presets.length === 0 ? (
-              <div className="empty-state">No presets saved yet.</div>
-            ) : (
-              <div className="file-grid">
-                {presets.map((preset, i) => (
-                  <div key={i} className="preset-card">
-                    <div>
-                      <strong>{preset.name}</strong>
-                      <span style={{ color: 'var(--olive-300)', marginLeft: 8, fontSize: '0.85rem' }}>
-                        {RESOLUTION_OPTIONS.find(o => o.value === preset.resolution)?.label} ·{' '}
-                        {FPS_OPTIONS.find(o => o.value === preset.fps)?.label}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="mini-btn" onClick={() => handleLoadPreset(preset)}>Load</button>
-                      <button className="file-remove" onClick={() => handleDeletePreset(i)}>✕</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button className="btn btn-primary" onClick={handleSave} disabled={isSaving} style={{ marginTop: 16 }}>
-              {isSaving ? 'Saving...' : 'Save Presets'}
             </button>
           </div>
         )}

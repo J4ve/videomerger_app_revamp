@@ -1,10 +1,10 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import * as http from 'http';
 import * as url from 'url';
-import { execSync } from 'child_process';
+import { execFile, execSync } from 'child_process';
 import Store = require('electron-store');
 import { container } from '../core/container';
 import { PythonFFmpegAdapter } from '../core/adapters/PythonFFmpegAdapter';
@@ -47,6 +47,41 @@ if (
   app.commandLine.appendSwitch('disable-gpu-compositing');
 }
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'local-video',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+]);
+
+function registerLocalVideoProtocol(): void {
+  protocol.handle('local-video', async (request) => {
+    try {
+      const reqUrl = new url.URL(request.url);
+      const encodedPath = reqUrl.searchParams.get('path');
+      if (!encodedPath) {
+        return new Response('Missing path parameter', { status: 400 });
+      }
+
+      const filePath = decodeURIComponent(encodedPath);
+      if (!fs.existsSync(filePath)) {
+        return new Response('File not found', { status: 404 });
+      }
+
+      const fileUrl = url.pathToFileURL(filePath).toString();
+      return net.fetch(fileUrl);
+    } catch {
+      return new Response('Invalid local video request', { status: 400 });
+    }
+  });
+}
+
 /**
  * Get the path to bundled FFmpeg binary
  * Checks resources/ffmpeg/ directory first (for packaged app)
@@ -79,6 +114,58 @@ function getFFmpegSystemPath(): string | null {
   } catch {
     return null;
   }
+}
+
+function getFFprobeSystemPath(): string | null {
+  try {
+    const cmd = process.platform === 'win32' ? 'where ffprobe' : 'which ffprobe';
+    const result = execSync(cmd, { encoding: 'utf-8' }).trim();
+    return result.split('\n')[0].trim();
+  } catch {
+    return null;
+  }
+}
+
+function getBundledFFprobePath(): string | null {
+  const ext = process.platform === 'win32' ? '.exe' : '';
+  const possiblePaths = [
+    path.join(process.resourcesPath || '', 'ffmpeg', `ffprobe${ext}`),
+    path.join(__dirname, '../../resources/ffmpeg', `ffprobe${ext}`),
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+  return null;
+}
+
+function getVideoDurationSeconds(filePath: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const ffprobePath = getBundledFFprobePath() || getFFprobeSystemPath() || 'ffprobe';
+    execFile(
+      ffprobePath,
+      [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        filePath,
+      ],
+      { timeout: 15000 },
+      (error, stdout) => {
+        if (error) {
+          resolve(null);
+          return;
+        }
+        const duration = Number.parseFloat((stdout || '').trim());
+        if (Number.isFinite(duration)) {
+          resolve(duration);
+          return;
+        }
+        resolve(null);
+      }
+    );
+  });
 }
 
 /**
@@ -336,6 +423,28 @@ function setupIPC(): void {
     return await service.getVideoInfo(path);
   });
 
+  ipcMain.handle('get-arrange-video-metadata', async (event, paths: string[]) => {
+    const uniquePaths = Array.from(new Set((paths || []).filter(Boolean)));
+    const entries = await Promise.all(uniquePaths.map(async (filePath) => {
+      try {
+        const stats = await fs.promises.stat(filePath);
+        const duration = await getVideoDurationSeconds(filePath);
+        return [filePath, {
+          duration,
+          modifiedMs: stats.mtimeMs,
+          size: stats.size,
+        }];
+      } catch {
+        return [filePath, {
+          duration: null,
+          modifiedMs: null,
+          size: null,
+        }];
+      }
+    }));
+    return Object.fromEntries(entries);
+  });
+
   ipcMain.handle('merge-videos', async (event, options: IVideoMergeOptions) => {
     return await service.mergeVideos(options);
   });
@@ -507,6 +616,7 @@ function setupIPC(): void {
 }
 
 app.whenReady().then(() => {
+  registerLocalVideoProtocol();
   setupDependencies();
   createWindow();
   setupIPC();
