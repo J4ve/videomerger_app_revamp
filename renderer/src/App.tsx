@@ -771,7 +771,7 @@ const App: React.FC = () => {
               <img src="/app-icon.svg" alt="Video Merger icon" className="brand-logo" />
               <div>
                 <h1>VideoMerger</h1>
-                <p>Desktop merge wizard</p>
+                <p>Bulk video merging app</p>
               </div>
             </div>
           </header>
@@ -839,7 +839,7 @@ const App: React.FC = () => {
             <img src="/app-icon.svg" alt="Video Merger icon" className="brand-logo" />
             <div>
               <h1>VideoMerger</h1>
-              <p>Desktop merge wizard</p>
+              <p>Bulk video merging app</p>
             </div>
           </div>
 
