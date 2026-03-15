@@ -174,16 +174,9 @@ function getVideoDurationSeconds(filePath: string): Promise<number | null> {
  */
 function getAppConfig(): IAppConfig {
   const bundledPath = getBundledFFmpegPath();
-  
-  // Handled unpacked asar directory for python scripts in production
-  const isPackaged = __dirname.includes('app.asar');
-  const basePath = isPackaged 
-    ? __dirname.replace('app.asar', 'app.asar.unpacked') 
-    : __dirname;
-
   return {
     pythonPath: 'python',
-    pythonScriptPath: path.join(basePath, '../../src/videomerger/video_processor_cli.py'),
+    pythonScriptPath: path.join(__dirname, '../../src/videomerger/video_processor_cli.py'),
     supportedFormats: ['mp4', 'avi', 'mov', 'mkv', 'webm'],
     maxFileSizeMb: store.get('maxFileSizeMb', 500) as number,
     ...(bundledPath ? { ffmpegPath: bundledPath } : {}),

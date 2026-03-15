@@ -768,7 +768,7 @@ const App: React.FC = () => {
         <div className="wizard-shell">
           <header className="wizard-header" style={{ justifyContent: 'center' }}>
             <div className="brand">
-              <img src="/icon.png" alt="Video Merger icon" className="brand-logo" />
+              <img src="/app-icon.svg" alt="Video Merger icon" className="brand-logo" />
               <div>
                 <h1>VideoMerger</h1>
                 <p>Bulk video merging app</p>
@@ -803,7 +803,7 @@ const App: React.FC = () => {
         <div className="wizard-shell">
           <header className="wizard-header">
             <div className="brand">
-              <img src="/icon.png" alt="Video Merger icon" className="brand-logo" />
+              <img src="/app-icon.svg" alt="Video Merger icon" className="brand-logo" />
               <div>
                 <h1>VideoMerger</h1>
                 <p>Dashboard &amp; Settings</p>

@@ -34,9 +34,6 @@
       "src/**/*",
       "package.json"
     ],
-    "asarUnpack": [
-      "src/videomerger/**/*"
-    ],
     "extraResources": [
       "resources/**/*"
     ]

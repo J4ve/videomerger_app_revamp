@@ -279,7 +279,6 @@ def merge_videos(input_paths, output_path, quality='medium', codec='H.264', over
 
 def main():
     parser = argparse.ArgumentParser(description='Video processor CLI')
-    parser.add_argument('--ffmpeg-path', help='Path to FFmpeg executable')
     parser.add_argument('--check-ffmpeg', action='store_true', help='Check if FFmpeg is available')
     parser.add_argument('--version', action='store_true', help='Get FFmpeg version')
     parser.add_argument('--merge', action='store_true', help='Merge videos')
@@ -291,10 +290,6 @@ def main():
     parser.add_argument('--allow-hwaccel', action='store_true', help='Allow FFmpeg hardware acceleration (less stable on some systems)')
 
     args = parser.parse_args()
-
-    if args.ffmpeg_path:
-        ffmpeg_dir = os.path.dirname(os.path.abspath(args.ffmpeg_path))
-        os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
 
     if args.check_ffmpeg:
         sys.exit(0 if check_ffmpeg() else 1)
