@@ -61,17 +61,39 @@ export class VideoProcessingService implements IVideoProcessingService {
     });
 
     try {
+      let lastProgress = 0;
       const result = await this.strategy.process(options, (output) => {
-        // Basic parser for FFmpeg time progress output
-        // Example output: frame=  100 fps= 20 q=28.0 size=    2048kB time=00:00:10.00 bitrate=1677.7kbits/s speed=2.00x
-        const timeMatch = output.match(/time=(\d{2}:\d{2}:\d{2}\.\d{2})/);
-        if (timeMatch) {
-          // You could parse the total duration of the inputs prior to merging to calculate exact percentage
-          // For MVP, we pass the raw time back or emit a generic progress event.
+        // A single stream chunk may contain multiple PROGRESS markers.
+        // Parse all and keep the highest one observed in this chunk.
+        const progressMatches = Array.from(output.matchAll(/PROGRESS:\s*(\d{1,3})/gi));
+        if (progressMatches.length > 0) {
+          let highestInChunk = lastProgress;
+          for (const match of progressMatches) {
+            const parsed = Number.parseInt(match[1], 10);
+            if (!Number.isFinite(parsed)) continue;
+            const clamped = Math.max(0, Math.min(100, parsed));
+            if (clamped > highestInChunk) {
+              highestInChunk = clamped;
+            }
+          }
+
+          if (highestInChunk > lastProgress) {
+            lastProgress = highestInChunk;
+            this.emitEvent({
+              type: 'progress',
+              message: `Processing: ${lastProgress}%`,
+              progress: lastProgress,
+            });
+          }
+        }
+
+        // Keep useful processing status text flowing to the UI.
+        const infoMatch = output.match(/INFO:\s*(.+)/i);
+        if (infoMatch?.[1]) {
           this.emitEvent({
             type: 'progress',
-            message: `Processing: ${timeMatch[1]}`,
-            progress: 50 // arbitrary placeholder until total duration is known, UI just needs the event
+            message: infoMatch[1].trim(),
+            progress: lastProgress,
           });
         }
       });
