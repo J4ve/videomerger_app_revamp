@@ -11,6 +11,103 @@
   --blue-400: #4ba3ff;
   --green-500: #21c56d;
   --danger-500: #ff6a6a;
+  --danger-text: #ffc0c0;
+  --bg-text: #f2f4ee;
+  --bg-accent-1: rgba(47, 144, 245, 0.24);
+  --bg-accent-2: rgba(21, 33, 27, 0.7);
+  --shell-bg-top: rgba(32, 36, 30, 0.9);
+  --shell-bg-bottom: rgba(22, 25, 21, 0.9);
+  --header-bg-top: rgba(31, 35, 29, 0.98);
+  --header-bg-bottom: rgba(25, 28, 24, 0.96);
+  --panel-bg-top: rgba(27, 30, 25, 0.9);
+  --panel-bg-bottom: rgba(21, 23, 20, 0.94);
+  --chip-bg: rgba(21, 24, 20, 0.8);
+  --surface-soft: rgba(14, 16, 13, 0.75);
+  --surface-card: rgba(35, 39, 33, 0.82);
+  --surface-strong: rgba(14, 16, 13, 0.55);
+  --toolbar-bg: rgba(22, 24, 20, 0.6);
+  --control-bg: rgba(60, 67, 57, 0.9);
+  --control-bg-hover: rgba(80, 87, 77, 1);
+  --dropzone-bg: rgba(38, 42, 36, 0.5);
+  --btn-secondary-bg: rgba(62, 69, 58, 0.86);
+  --progress-card-bg: rgba(17, 19, 16, 0.7);
+  --progress-track-bg: #2b3029;
+  --player-shell-bg: rgba(7, 9, 7, 0.8);
+  --player-canvas-bg: #000000;
+}
+
+:root[data-theme='midnight-blue'] {
+  --olive-950: #0b1017;
+  --olive-900: #131b26;
+  --olive-850: #1a2433;
+  --olive-800: #223042;
+  --olive-700: #2f4158;
+  --olive-600: #435a74;
+  --olive-300: #a8b8c9;
+  --olive-200: #d8e3ef;
+  --blue-500: #2d8fff;
+  --blue-400: #62b0ff;
+  --danger-text: #ffc8c8;
+  --bg-text: #edf5ff;
+  --bg-accent-1: rgba(63, 156, 255, 0.28);
+  --bg-accent-2: rgba(18, 33, 61, 0.75);
+  --shell-bg-top: rgba(23, 34, 48, 0.92);
+  --shell-bg-bottom: rgba(16, 24, 36, 0.92);
+  --header-bg-top: rgba(22, 33, 48, 0.97);
+  --header-bg-bottom: rgba(16, 25, 37, 0.97);
+  --panel-bg-top: rgba(24, 35, 50, 0.9);
+  --panel-bg-bottom: rgba(16, 24, 36, 0.94);
+  --chip-bg: rgba(16, 24, 36, 0.82);
+  --surface-soft: rgba(14, 20, 30, 0.78);
+  --surface-card: rgba(24, 35, 50, 0.82);
+  --surface-strong: rgba(15, 24, 36, 0.65);
+  --toolbar-bg: rgba(16, 24, 36, 0.66);
+  --control-bg: rgba(47, 66, 88, 0.9);
+  --control-bg-hover: rgba(61, 83, 108, 0.98);
+  --dropzone-bg: rgba(35, 49, 67, 0.5);
+  --btn-secondary-bg: rgba(56, 76, 102, 0.9);
+  --progress-card-bg: rgba(18, 30, 45, 0.82);
+  --progress-track-bg: #223142;
+  --player-shell-bg: rgba(19, 31, 47, 0.86);
+  --player-canvas-bg: #0f1a29;
+}
+
+:root[data-theme='sand-light'] {
+  --olive-950: #efe8d9;
+  --olive-900: #f6efdf;
+  --olive-850: #f2ead9;
+  --olive-800: #e8ddc7;
+  --olive-700: #d5c8aa;
+  --olive-600: #b9aa88;
+  --olive-300: #5a503d;
+  --olive-200: #413928;
+  --blue-500: #407ac9;
+  --blue-400: #5890dc;
+  --green-500: #2a9b57;
+  --danger-500: #d25f5f;
+  --danger-text: #6a2727;
+  --bg-text: #2f291c;
+  --bg-accent-1: rgba(122, 154, 210, 0.26);
+  --bg-accent-2: rgba(190, 173, 130, 0.38);
+  --shell-bg-top: rgba(245, 236, 220, 0.95);
+  --shell-bg-bottom: rgba(235, 225, 205, 0.95);
+  --header-bg-top: rgba(236, 225, 202, 0.98);
+  --header-bg-bottom: rgba(226, 213, 188, 0.98);
+  --panel-bg-top: rgba(241, 233, 215, 0.94);
+  --panel-bg-bottom: rgba(232, 221, 198, 0.94);
+  --chip-bg: rgba(229, 218, 193, 0.9);
+  --surface-soft: rgba(233, 223, 202, 0.95);
+  --surface-card: rgba(236, 226, 204, 0.88);
+  --surface-strong: rgba(234, 223, 200, 0.9);
+  --toolbar-bg: rgba(232, 220, 196, 0.8);
+  --control-bg: rgba(216, 200, 166, 0.88);
+  --control-bg-hover: rgba(202, 184, 149, 0.95);
+  --dropzone-bg: rgba(231, 218, 190, 0.78);
+  --btn-secondary-bg: rgba(220, 204, 171, 0.95);
+  --progress-card-bg: rgba(228, 216, 191, 0.9);
+  --progress-track-bg: #d5c8ad;
+  --player-shell-bg: rgba(224, 211, 182, 0.92);
+  --player-canvas-bg: #ddd2b8;
 }
 
 * {
@@ -28,10 +125,10 @@ body,
 body {
   font-family: 'Segoe UI', 'Inter', 'Helvetica Neue', sans-serif;
   background:
-    radial-gradient(circle at 12% 18%, rgba(47, 144, 245, 0.24), transparent 36%),
-    radial-gradient(circle at 85% 0%, rgba(21, 33, 27, 0.7), transparent 45%),
+    radial-gradient(circle at 12% 18%, var(--bg-accent-1), transparent 36%),
+    radial-gradient(circle at 85% 0%, var(--bg-accent-2), transparent 45%),
     linear-gradient(145deg, var(--olive-950), var(--olive-900));
-  color: #f2f4ee;
+  color: var(--bg-text);
 }
 
 /* ─── Scrollbar (Themed) ─── */
@@ -80,7 +177,7 @@ body {
 .wizard-shell {
   width: min(1200px, 100%);
   height: min(90vh, 900px);
-  background: linear-gradient(180deg, rgba(32, 36, 30, 0.9), rgba(22, 25, 21, 0.9));
+  background: linear-gradient(180deg, var(--shell-bg-top), var(--shell-bg-bottom));
   border: 1px solid var(--olive-700);
   border-radius: 22px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
@@ -95,7 +192,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: linear-gradient(180deg, rgba(31, 35, 29, 0.98), rgba(25, 28, 24, 0.96));
+  background: linear-gradient(180deg, var(--header-bg-top), var(--header-bg-bottom));
   border-bottom: 1px solid var(--olive-700);
   padding: 18px 22px;
   display: grid;
@@ -135,7 +232,7 @@ body {
 .status-chip {
   justify-self: end;
   max-width: 300px;
-  background-color: rgba(21, 24, 20, 0.8);
+  background-color: var(--chip-bg);
   border: 1px solid var(--olive-700);
   border-radius: 999px;
   padding: 8px 12px;
@@ -271,7 +368,7 @@ body {
 }
 
 .panel {
-  background: linear-gradient(180deg, rgba(27, 30, 25, 0.9), rgba(21, 23, 20, 0.94));
+  background: linear-gradient(180deg, var(--panel-bg-top), var(--panel-bg-bottom));
   border: 1px solid var(--olive-700);
   border-radius: 16px;
   padding: 22px;
@@ -289,14 +386,19 @@ body {
   color: var(--olive-300);
 }
 
+.step-title-centered,
+.step-subtitle-centered {
+  text-align: center;
+}
+
 /* ─── Dropzone ─── */
 
 .dropzone {
   width: 100%;
   border: 2px dashed var(--olive-600);
   border-radius: 14px;
-  background: rgba(38, 42, 36, 0.5);
-  color: #f3f7ed;
+  background: var(--dropzone-bg);
+  color: var(--olive-200);
   cursor: pointer;
   min-height: 180px;
   display: grid;
@@ -389,7 +491,7 @@ body {
 }
 
 .empty-state {
-  background-color: rgba(30, 33, 28, 0.82);
+  background-color: var(--surface-card);
   border: 1px solid var(--olive-700);
   border-radius: 12px;
   padding: 18px;
@@ -399,7 +501,7 @@ body {
 
 .file-item,
 .sequence-item {
-  background-color: rgba(35, 39, 33, 0.82);
+  background-color: var(--surface-card);
   border: 1px solid var(--olive-700);
   border-radius: 12px;
   padding: 12px;
@@ -434,7 +536,7 @@ body {
 
 .file-remove {
   border: 1px solid rgba(255, 106, 106, 0.45);
-  color: #ffd2d2;
+  color: var(--danger-text);
   background-color: rgba(255, 106, 106, 0.12);
   border-radius: 9px;
   padding: 7px 10px;
@@ -488,7 +590,7 @@ body {
   flex-wrap: wrap;
   margin-bottom: 14px;
   padding: 8px 12px;
-  background-color: rgba(22, 24, 20, 0.6);
+  background-color: var(--toolbar-bg);
   border: 1px solid var(--olive-700);
   border-radius: 10px;
 }
@@ -500,7 +602,7 @@ body {
 }
 
 .sort-btn {
-  background-color: rgba(60, 67, 57, 0.7);
+  background-color: var(--control-bg);
   color: var(--olive-200);
   border: 1px solid var(--olive-700);
   border-radius: 8px;
@@ -511,7 +613,7 @@ body {
 }
 
 .sort-btn:hover {
-  background-color: rgba(60, 67, 57, 1);
+  background-color: var(--control-bg-hover);
   border-color: var(--olive-600);
 }
 
@@ -522,8 +624,8 @@ body {
 }
 
 .mini-btn {
-  background-color: rgba(60, 67, 57, 0.9);
-  color: #ecf2e2;
+  background-color: var(--control-bg);
+  color: var(--olive-200);
   border: 1px solid var(--olive-600);
   border-radius: 8px;
   padding: 6px 10px;
@@ -533,7 +635,7 @@ body {
 }
 
 .mini-btn:hover:not(:disabled) {
-  background-color: rgba(80, 87, 77, 1);
+  background-color: var(--control-bg-hover);
 }
 
 .mini-btn-lock-active {
@@ -555,7 +657,7 @@ body {
   padding: 12px;
   border-radius: 12px;
   border: 1px solid var(--olive-700);
-  background: rgba(14, 16, 13, 0.55);
+  background: var(--surface-strong);
 }
 
 .arrange-preview-panel h3 {
@@ -591,7 +693,7 @@ body {
   color: var(--olive-200);
   font-size: 0.78rem;
   border: 1px solid rgba(96, 104, 91, 0.45);
-  background: rgba(22, 24, 20, 0.6);
+  background: var(--toolbar-bg);
   border-radius: 999px;
   padding: 3px 8px;
   white-space: nowrap;
@@ -614,7 +716,7 @@ body {
 
 .output-path-box {
   border: 1px solid var(--olive-700);
-  background-color: rgba(14, 16, 13, 0.75);
+  background-color: var(--surface-soft);
   border-radius: 10px;
   padding: 12px;
   color: var(--olive-200);
@@ -627,7 +729,7 @@ body {
 .progress-card {
   border: 1px solid var(--olive-700);
   border-radius: 12px;
-  background-color: rgba(17, 19, 16, 0.7);
+  background-color: var(--progress-card-bg);
   padding: 14px;
 }
 
@@ -643,7 +745,7 @@ body {
   width: 100%;
   height: 10px;
   border-radius: 99px;
-  background-color: #2b3029;
+  background-color: var(--progress-track-bg);
   overflow: hidden;
 }
 
@@ -682,7 +784,7 @@ body {
 }
 
 .preview-block {
-  background-color: rgba(14, 16, 13, 0.5);
+  background-color: var(--surface-strong);
   border: 1px solid var(--olive-700);
   border-radius: 12px;
   padding: 16px;
@@ -723,7 +825,7 @@ body {
 
 .config-switch-btn {
   border: 1px solid var(--olive-600);
-  background: rgba(30, 34, 28, 0.7);
+  background: var(--control-bg);
   color: var(--olive-200);
   border-radius: 999px;
   padding: 8px 14px;
@@ -756,7 +858,7 @@ body {
 }
 
 .preview-player-wrap {
-  background-color: rgba(14, 16, 13, 0.5);
+  background-color: var(--surface-strong);
   border: 1px solid var(--olive-700);
   border-radius: 12px;
   padding: 16px;
@@ -771,7 +873,7 @@ body {
 .preview-player-box {
   border-radius: 10px;
   overflow: hidden;
-  background: rgba(7, 9, 7, 0.8);
+  background: var(--player-shell-bg);
   border: 1px solid rgba(96, 104, 91, 0.35);
   min-height: 190px;
   display: grid;
@@ -781,7 +883,7 @@ body {
 .preview-player {
   width: 100%;
   max-height: 260px;
-  background: #000;
+  background: var(--player-canvas-bg);
 }
 
 .preview-player-empty {
@@ -807,7 +909,7 @@ body {
 .preview-file-btn {
   width: 100%;
   border: 1px solid rgba(96, 104, 91, 0.4);
-  background: rgba(35, 39, 33, 0.74);
+  background: var(--surface-card);
   border-radius: 10px;
   padding: 9px 10px;
   color: var(--olive-200);
@@ -1011,7 +1113,7 @@ body {
 }
 
 .dashboard-content {
-  background: rgba(14, 16, 13, 0.4);
+  background: var(--surface-strong);
   border: 1px solid var(--olive-700);
   border-radius: 14px;
   padding: 22px;
@@ -1030,7 +1132,7 @@ body {
 /* ─── Presets ─── */
 
 .preset-card {
-  background-color: rgba(35, 39, 33, 0.82);
+  background-color: var(--surface-card);
   border: 1px solid var(--olive-700);
   border-radius: 12px;
   padding: 12px 14px;
@@ -1047,7 +1149,7 @@ body {
   align-items: center;
   gap: 16px;
   padding: 16px;
-  background-color: rgba(35, 39, 33, 0.6);
+  background-color: var(--surface-card);
   border: 1px solid var(--olive-700);
   border-radius: 12px;
 }
@@ -1089,9 +1191,9 @@ body {
 }
 
 .btn-secondary {
-  background-color: rgba(62, 69, 58, 0.86);
+  background-color: var(--btn-secondary-bg);
   border-color: var(--olive-600);
-  color: #eff6e5;
+  color: var(--olive-200);
 }
 
 .btn-ghost {

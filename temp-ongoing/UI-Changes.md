@@ -80,3 +80,43 @@
 - Updated profile badge in the top-right header to be clickable.
 - Clicking the profile badge now opens Dashboard directly to `Account` tab.
 - Settings gear continues to open Dashboard on `General` tab.
+
+### YouTube Preset Parity (Settings)
+- Updated Settings → YouTube section to match Finalize YouTube preset entry style.
+- Added preset management in Settings YouTube defaults: Save preset, Load preset, Delete preset.
+- Wired Settings YouTube presets to the same persisted `ytQuickPresets` store used in Finalize.
+
+### Clean Preview Playback Mode
+- Removed native video controls UI (pause/progress bar/etc.) from Arrange and Finalize preview players.
+- Preview playback now renders as a clean, UI-free video surface.
+
+### Step 1 Title Alignment
+- Center-aligned the Step 1 heading (`Add your videos`) and its subtitle for a cleaner hero-style entry point.
+
+### General Settings Overhaul
+- Replaced previous General settings fields with quality-of-life controls:
+  - App Theme selector (`Olive Dark`, `Midnight Blue`, `Sand Light`).
+  - Default output/save folder picker so merges can avoid manual save-prompt flow every run.
+  - Preset Pack export/import actions for reusable settings packs.
+- Added preset pack file operations (JSON) via app dialogs and IPC handlers.
+- Updated merge flow to allow using configured default output folder when explicit output file is not manually selected.
+
+### Menu Label Cleanup
+- Removed emoji prefixes from Settings dashboard tab labels (General, YouTube, FFmpeg, Account).
+
+### Theme Surface Cleanup (Sand Light)
+- Replaced remaining hardcoded dark backgrounds on key controls with theme-aware surface variables.
+- Fixed Sand Light dark spots on elements like the settings mini button, drag/drop zone, toolbar controls, and arrangement cards.
+
+### Theme Feature Stabilization
+- Theme now applies immediately when changed in Settings (no delayed visual update).
+- Expanded theme variable coverage to key surfaces (shell, header, panel, status chip, output path container) for clearer visual distinction between themes.
+
+### Sand Light Dark-Spot Cleanup
+- Removed remaining hardcoded dark fills in Settings, Arrange, and Finalization surfaces.
+- Switched progress cards/tracks, preview cards/player shells, dashboard content, preset/account cards, and secondary buttons to theme-variable colors.
+- Result: Sand Light now uses consistent warm surfaces without black patches in key sections.
+
+### Remove Button Text Readability
+- Updated remove-action button text color to use a theme variable (`--danger-text`) instead of a fixed near-white value.
+- Set per-theme danger text values so the label stays readable, especially in Sand Light where white text looked off.

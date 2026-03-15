@@ -4,7 +4,8 @@ declare global {
   interface Window {
     electronAPI: {
       selectVideoFiles: () => Promise<string[]>;
-      selectSaveLocation: () => Promise<string | undefined>;
+      selectSaveLocation: (initialDirectory?: string) => Promise<string | undefined>;
+      selectOutputDirectory: () => Promise<string | undefined>;
       validateVideos: (paths: string[]) => Promise<boolean>;
       getVideoInfo: (path: string) => Promise<any>;
       getArrangeVideoMetadata: (paths: string[]) => Promise<Record<string, {
@@ -23,6 +24,8 @@ declare global {
       openFolder: (path: string) => Promise<void>;
       getSettings: () => Promise<any>;
       saveSettings: (settings: any) => Promise<void>;
+      exportPresetPack: (presetPack: any) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
+      importPresetPack: () => Promise<{ success: boolean; canceled?: boolean; data?: any; path?: string; error?: string }>;
       googleOAuthLogin: () => Promise<{ success: boolean; user?: any; error?: string }>;
       googleOAuthLogout: () => Promise<{ success: boolean }>;
       getGoogleAuthStatus: () => Promise<{ isLoggedIn: boolean; user?: any }>;
@@ -62,6 +65,8 @@ interface YouTubeQuickPreset {
   description: string;
   privacy: string;
 }
+
+type AppTheme = 'olive-dark' | 'midnight-blue' | 'sand-light';
 
 const App: React.FC = () => {
   // Wizard state
@@ -103,6 +108,8 @@ const App: React.FC = () => {
   const [ytPresetName, setYtPresetName] = useState<string>('');
   const [ytQuickPresets, setYtQuickPresets] = useState<YouTubeQuickPreset[]>([]);
   const [selectedYtPresetName, setSelectedYtPresetName] = useState<string>('');
+  const [appTheme, setAppTheme] = useState<AppTheme>('olive-dark');
+  const [defaultOutputDir, setDefaultOutputDir] = useState<string>('');
 
   // Arrange sort state
   const [sortBy, setSortBy] = useState<SortField>('none');
@@ -142,19 +149,31 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const loadQuickPresets = async () => {
+    const loadAppSettings = async () => {
       try {
         const settings = await window.electronAPI.getSettings();
         const presets = settings?.ytQuickPresets;
         if (Array.isArray(presets)) {
           setYtQuickPresets(presets.filter((p: any) => p && typeof p.name === 'string'));
         }
+
+        if (typeof settings?.appTheme === 'string') {
+          setAppTheme(settings.appTheme as AppTheme);
+        }
+
+        if (typeof settings?.defaultOutputDir === 'string') {
+          setDefaultOutputDir(settings.defaultOutputDir);
+        }
       } catch {
         // noop
       }
     };
-    loadQuickPresets();
+    loadAppSettings();
   }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', appTheme);
+  }, [appTheme]);
 
   const canProceedStep1 = selectedFiles.length >= 2;
   const canProceedStep2 = selectedFiles.length >= 2;
@@ -550,9 +569,16 @@ const App: React.FC = () => {
     return `${mb.toFixed(1)} MB`;
   };
 
+  const buildDefaultOutputPath = (): string => {
+    if (!defaultOutputDir) return '';
+    const separator = defaultOutputDir.includes('\\') ? '\\' : '/';
+    const safeBaseDir = defaultOutputDir.replace(/[\\/]+$/, '');
+    return `${safeBaseDir}${separator}merged_video_${Date.now()}.mp4`;
+  };
+
   // --- Output & Merge ---
   const handleSelectOutput = async () => {
-    const path = await window.electronAPI.selectSaveLocation();
+    const path = await window.electronAPI.selectSaveLocation(defaultOutputDir || undefined);
     if (path) {
       setOutputPath(path);
       setStatus(`Output: ${path}`);
@@ -564,9 +590,13 @@ const App: React.FC = () => {
       setStatus('Please select at least 2 videos');
       return;
     }
-    if (!outputPath) {
-      setStatus('Please select output location');
+    const resolvedOutputPath = outputPath || buildDefaultOutputPath();
+    if (!resolvedOutputPath) {
+      setStatus('Please select output location or set a default output folder in Settings.');
       return;
+    }
+    if (!outputPath) {
+      setOutputPath(resolvedOutputPath);
     }
 
     setIsMerging(true);
@@ -585,7 +615,7 @@ const App: React.FC = () => {
 
     const result = await window.electronAPI.mergeVideos({
       inputPaths: selectedFiles,
-      outputPath: outputPath,
+      outputPath: resolvedOutputPath,
       standardization: standardization,
     });
 
@@ -821,7 +851,11 @@ const App: React.FC = () => {
               ffmpegDetails={ffmpegDetails}
               standardization={standardization}
               initialTab={dashboardInitialTab}
+              appTheme={appTheme}
+              defaultOutputDir={defaultOutputDir}
               onStandardizationChange={setStandardization}
+              onThemeChange={setAppTheme}
+              onDefaultOutputDirChange={setDefaultOutputDir}
               onLogout={handleLogout}
               onLogin={handleGoogleLogin}
             />
@@ -974,8 +1008,8 @@ const App: React.FC = () => {
               {/* Step 1: Add Videos */}
               {step === 1 && (
                 <section className="panel fade-in">
-                  <h2>Add your videos</h2>
-                  <p className="panel-subtitle">Choose at least two clips to start your merge workflow.</p>
+                  <h2 className="step-title-centered">Add your videos</h2>
+                  <p className="panel-subtitle step-subtitle-centered">Choose at least two clips to start your merge workflow.</p>
 
                   <div
                     className={`dropzone ${isDragOver ? 'dropzone-drag-over' : ''}`}
@@ -1063,7 +1097,6 @@ const App: React.FC = () => {
                           <video
                             key={`arrange-${previewVideoSrc}`}
                             className="preview-player"
-                            controls
                             autoPlay
                             preload="metadata"
                             src={previewVideoSrc}
@@ -1182,7 +1215,6 @@ const App: React.FC = () => {
                             <video
                               key={previewVideoSrc}
                               className="preview-player"
-                              controls
                               autoPlay
                               preload="metadata"
                               src={previewVideoSrc}
@@ -1391,7 +1423,7 @@ const App: React.FC = () => {
                 isMerging ||
                 (step === 1 && !canProceedStep1) ||
                 (step === 2 && !canProceedStep2) ||
-                (step === 3 && !outputPath)
+                (step === 3 && !outputPath && !defaultOutputDir)
               }
             >
               {nextLabel}
@@ -1410,28 +1442,43 @@ interface DashboardPanelProps {
   ffmpegDetails: any;
   standardization: { resolution: string; fps: string };
   initialTab: 'general' | 'youtube' | 'ffmpeg' | 'account';
+  appTheme: AppTheme;
+  defaultOutputDir: string;
   onStandardizationChange: (s: { resolution: string; fps: string }) => void;
+  onThemeChange: (theme: AppTheme) => void;
+  onDefaultOutputDirChange: (path: string) => void;
   onLogout: () => void;
   onLogin: () => void;
 }
 
 const DashboardPanel: React.FC<DashboardPanelProps> = ({
-  isLoggedIn, googleUser, ffmpegDetails, standardization, initialTab, onStandardizationChange, onLogout, onLogin
+  isLoggedIn, googleUser, ffmpegDetails, standardization, initialTab, appTheme, defaultOutputDir,
+  onStandardizationChange, onThemeChange, onDefaultOutputDirChange, onLogout, onLogin
 }) => {
   const [settings, setSettings] = useState<any>({
-    maxFileSizeMb: 500,
-    defaultResolution: 'original',
-    defaultFps: 'original',
+    appTheme: appTheme,
+    defaultOutputDir: defaultOutputDir,
     ytDefaultPrivacy: 'private',
     ytDefaultTitle: '',
     ytDefaultDescription: '',
   });
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const [ytQuickPresets, setYtQuickPresets] = useState<YouTubeQuickPreset[]>([]);
+  const [ytPresetName, setYtPresetName] = useState<string>('');
+  const [selectedYtPresetName, setSelectedYtPresetName] = useState<string>('');
 
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
+
+  useEffect(() => {
+    setSettings((prev: any) => ({
+      ...prev,
+      appTheme,
+      defaultOutputDir,
+    }));
+  }, [appTheme, defaultOutputDir]);
 
   useEffect(() => {
     loadSettings();
@@ -1442,6 +1489,9 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
       const data = await window.electronAPI.getSettings();
       if (data) {
         setSettings((prev: any) => ({ ...prev, ...data }));
+        if (Array.isArray(data.ytQuickPresets)) {
+          setYtQuickPresets(data.ytQuickPresets.filter((p: any) => p && typeof p.name === 'string'));
+        }
       }
     } catch {
       // fallback
@@ -1450,7 +1500,9 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
   const handleSave = async () => {
     setIsSaving(true);
-    await window.electronAPI.saveSettings({ ...settings });
+    await window.electronAPI.saveSettings({ ...settings, ytQuickPresets });
+    onThemeChange((settings.appTheme || 'olive-dark') as AppTheme);
+    onDefaultOutputDirChange(settings.defaultOutputDir || '');
     onStandardizationChange({
       resolution: settings.defaultResolution || 'original',
       fps: settings.defaultFps || 'original',
@@ -1458,11 +1510,90 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
     setIsSaving(false);
   };
 
+  const handlePickDefaultOutputDir = async () => {
+    const directory = await window.electronAPI.selectOutputDirectory();
+    if (!directory) return;
+    setSettings((prev: any) => ({ ...prev, defaultOutputDir: directory }));
+  };
+
+  const handleExportPresetPack = async () => {
+    const presetPack = {
+      version: 1,
+      app: 'videomerger-desktop',
+      exportedAt: new Date().toISOString(),
+      youtubeDefaults: {
+        ytDefaultTitle: settings.ytDefaultTitle || '',
+        ytDefaultDescription: settings.ytDefaultDescription || '',
+        ytDefaultPrivacy: settings.ytDefaultPrivacy || 'private',
+      },
+      ytQuickPresets,
+    };
+    await window.electronAPI.exportPresetPack(presetPack);
+  };
+
+  const handleImportPresetPack = async () => {
+    const result = await window.electronAPI.importPresetPack();
+    if (!result?.success || !result.data) return;
+
+    const importedDefaults = result.data.youtubeDefaults || {};
+    const importedQuickPresets = Array.isArray(result.data.ytQuickPresets)
+      ? result.data.ytQuickPresets.filter((p: any) => p && typeof p.name === 'string')
+      : [];
+
+    setSettings((prev: any) => ({
+      ...prev,
+      ytDefaultTitle: importedDefaults.ytDefaultTitle || prev.ytDefaultTitle || '',
+      ytDefaultDescription: importedDefaults.ytDefaultDescription || prev.ytDefaultDescription || '',
+      ytDefaultPrivacy: importedDefaults.ytDefaultPrivacy || prev.ytDefaultPrivacy || 'private',
+    }));
+    setYtQuickPresets(importedQuickPresets);
+    setSelectedYtPresetName('');
+  };
+
+  const handleSaveYtQuickPreset = async () => {
+    const name = ytPresetName.trim();
+    if (!name) return;
+
+    const newPreset: YouTubeQuickPreset = {
+      name,
+      title: settings.ytDefaultTitle || '',
+      description: settings.ytDefaultDescription || '',
+      privacy: settings.ytDefaultPrivacy || 'private',
+    };
+
+    const nextPresets = [
+      ...ytQuickPresets.filter((preset) => preset.name.toLowerCase() !== name.toLowerCase()),
+      newPreset,
+    ];
+    setYtQuickPresets(nextPresets);
+    setSelectedYtPresetName(name);
+    await window.electronAPI.saveSettings({ ...settings, ytQuickPresets: nextPresets });
+  };
+
+  const handleLoadYtQuickPreset = () => {
+    const preset = ytQuickPresets.find((item) => item.name === selectedYtPresetName);
+    if (!preset) return;
+    setSettings((prev: any) => ({
+      ...prev,
+      ytDefaultTitle: preset.title,
+      ytDefaultDescription: preset.description,
+      ytDefaultPrivacy: preset.privacy,
+    }));
+  };
+
+  const handleDeleteYtQuickPreset = async () => {
+    if (!selectedYtPresetName) return;
+    const nextPresets = ytQuickPresets.filter((preset) => preset.name !== selectedYtPresetName);
+    setYtQuickPresets(nextPresets);
+    setSelectedYtPresetName('');
+    await window.electronAPI.saveSettings({ ...settings, ytQuickPresets: nextPresets });
+  };
+
   const tabs = [
-    { id: 'general', label: '⚙ General' },
-    { id: 'youtube', label: '📺 YouTube' },
-    { id: 'ffmpeg', label: '🎬 FFmpeg' },
-    { id: 'account', label: '👤 Account' },
+    { id: 'general', label: 'General' },
+    { id: 'youtube', label: 'YouTube' },
+    { id: 'ffmpeg', label: 'FFmpeg' },
+    { id: 'account', label: 'Account' },
   ];
 
   return (
@@ -1484,38 +1615,40 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
           <div className="dash-section">
             <h3>General Settings</h3>
             <label className="std-label">
-              Max File Size (MB)
-              <input
-                type="number"
-                value={settings.maxFileSizeMb}
-                onChange={e => setSettings({ ...settings, maxFileSizeMb: parseInt(e.target.value) || 500 })}
-                className="yt-input"
-              />
-            </label>
-            <label className="std-label">
-              Default Resolution
+              Theme
               <select
                 className="std-select"
-                value={settings.defaultResolution}
-                onChange={e => setSettings({ ...settings, defaultResolution: e.target.value })}
+                value={settings.appTheme || 'olive-dark'}
+                onChange={e => {
+                  const nextTheme = e.target.value as AppTheme;
+                  setSettings({ ...settings, appTheme: nextTheme });
+                  onThemeChange(nextTheme);
+                }}
               >
-                {RESOLUTION_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
+                <option value="olive-dark">Olive Dark</option>
+                <option value="midnight-blue">Midnight Blue</option>
+                <option value="sand-light">Sand Light</option>
               </select>
             </label>
-            <label className="std-label">
-              Default Frame Rate
-              <select
-                className="std-select"
-                value={settings.defaultFps}
-                onChange={e => setSettings({ ...settings, defaultFps: e.target.value })}
-              >
-                {FPS_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </label>
+            <div className="output-row" style={{ marginBottom: 0 }}>
+              <button className="btn btn-secondary" type="button" onClick={handlePickDefaultOutputDir}>
+                Choose Default Save Folder
+              </button>
+              <div className="output-path-box">
+                {settings.defaultOutputDir || 'No default folder selected'}
+              </div>
+            </div>
+
+            <div className="preview-block" style={{ padding: 12 }}>
+              <h3 style={{ marginBottom: 8 }}>Preset Pack</h3>
+              <p className="panel-subtitle" style={{ marginBottom: 10 }}>
+                Export your YouTube defaults and quick presets as a reusable preset pack.
+              </p>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary" type="button" onClick={handleExportPresetPack}>Export Preset Pack</button>
+                <button className="btn btn-ghost" type="button" onClick={handleImportPresetPack}>Import Preset Pack</button>
+              </div>
+            </div>
             <button className="btn btn-primary" onClick={handleSave} disabled={isSaving} style={{ marginTop: 16 }}>
               {isSaving ? 'Saving...' : 'Save Settings'}
             </button>
@@ -1529,38 +1662,80 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
               <div className="empty-state">Sign in with Google to configure YouTube settings.</div>
             ) : (
               <>
-                <label className="std-label">
-                  Default Title
-                  <input
-                    type="text"
-                    value={settings.ytDefaultTitle}
-                    onChange={e => setSettings({ ...settings, ytDefaultTitle: e.target.value })}
-                    className="yt-input"
-                    placeholder="My Merged Video"
-                  />
-                </label>
-                <label className="std-label">
-                  Default Description
-                  <textarea
-                    value={settings.ytDefaultDescription}
-                    onChange={e => setSettings({ ...settings, ytDefaultDescription: e.target.value })}
-                    className="yt-input"
-                    rows={3}
-                    placeholder="Video description..."
-                  />
-                </label>
-                <label className="std-label">
-                  Default Privacy
-                  <select
-                    className="std-select"
-                    value={settings.ytDefaultPrivacy}
-                    onChange={e => setSettings({ ...settings, ytDefaultPrivacy: e.target.value })}
-                  >
-                    <option value="private">Private</option>
-                    <option value="unlisted">Unlisted</option>
-                    <option value="public">Public</option>
-                  </select>
-                </label>
+                <div className="yt-config yt-config-compact">
+                  <div className="yt-inline-row">
+                    <label>
+                      Default Title
+                      <input
+                        type="text"
+                        value={settings.ytDefaultTitle}
+                        onChange={e => setSettings({ ...settings, ytDefaultTitle: e.target.value })}
+                        className="yt-input"
+                        placeholder="My Merged Video"
+                      />
+                    </label>
+                    <label>
+                      Default Privacy
+                      <select
+                        className="std-select"
+                        value={settings.ytDefaultPrivacy}
+                        onChange={e => setSettings({ ...settings, ytDefaultPrivacy: e.target.value })}
+                      >
+                        <option value="private">Private</option>
+                        <option value="unlisted">Unlisted</option>
+                        <option value="public">Public</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <label>
+                    Default Description
+                    <textarea
+                      value={settings.ytDefaultDescription}
+                      onChange={e => setSettings({ ...settings, ytDefaultDescription: e.target.value })}
+                      className="yt-input"
+                      rows={2}
+                      placeholder="Video description..."
+                    />
+                  </label>
+
+                  <div className="yt-preset-row">
+                    <label>
+                      Preset Name
+                      <input
+                        type="text"
+                        value={ytPresetName}
+                        onChange={(e) => setYtPresetName(e.target.value)}
+                        placeholder="e.g. Weekly Highlights"
+                        className="yt-input"
+                      />
+                    </label>
+                    <button className="btn btn-secondary" type="button" onClick={handleSaveYtQuickPreset}>
+                      Save Preset
+                    </button>
+                  </div>
+
+                  <div className="yt-preset-row">
+                    <label>
+                      Load Preset
+                      <select
+                        className="std-select"
+                        value={selectedYtPresetName}
+                        onChange={(e) => setSelectedYtPresetName(e.target.value)}
+                      >
+                        <option value="">Select preset</option>
+                        {ytQuickPresets.map((preset) => (
+                          <option key={preset.name} value={preset.name}>{preset.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="yt-preset-actions">
+                      <button className="btn btn-secondary" type="button" onClick={handleLoadYtQuickPreset}>Load</button>
+                      <button className="btn btn-ghost" type="button" onClick={handleDeleteYtQuickPreset}>Delete</button>
+                    </div>
+                  </div>
+                </div>
+
                 <button className="btn btn-primary" onClick={handleSave} disabled={isSaving} style={{ marginTop: 16 }}>
                   {isSaving ? 'Saving...' : 'Save YouTube Defaults'}
                 </button>

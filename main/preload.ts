@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   selectVideoFiles: () => ipcRenderer.invoke('select-video-files'),
-  selectSaveLocation: () => ipcRenderer.invoke('select-save-location'),
+  selectSaveLocation: (initialDirectory?: string) => ipcRenderer.invoke('select-save-location', initialDirectory),
+  selectOutputDirectory: () => ipcRenderer.invoke('select-output-directory'),
   validateVideos: (paths: string[]) => ipcRenderer.invoke('validate-videos', paths),
   getVideoInfo: (path: string) => ipcRenderer.invoke('get-video-info', path),
   getArrangeVideoMetadata: (paths: string[]) => ipcRenderer.invoke('get-arrange-video-metadata', paths),
@@ -12,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFolder: (path: string) => ipcRenderer.invoke('open-folder', path),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings: any) => ipcRenderer.invoke('save-settings', settings),
+  exportPresetPack: (presetPack: any) => ipcRenderer.invoke('export-preset-pack', presetPack),
+  importPresetPack: () => ipcRenderer.invoke('import-preset-pack'),
   googleOAuthLogin: () => ipcRenderer.invoke('google-oauth-login'),
   googleOAuthLogout: () => ipcRenderer.invoke('google-oauth-logout'),
   getGoogleAuthStatus: () => ipcRenderer.invoke('google-auth-status'),
