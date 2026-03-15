@@ -4,6 +4,12 @@
 
 VideoMerger can bundle FFmpeg binaries with the installer, so end users don't need to install FFmpeg separately. When bundled, the app detects the included binary automatically and uses it.
 
+## Current Packaged Version
+
+- **Version**: `2026-03-12-git-9dc44b43b2-full_build-www.gyan.dev`
+- **Source**: Gyan.dev (Full Build)
+- **Included Binaries**: `ffmpeg.exe`, `ffprobe.exe`, `ffplay.exe`
+
 ## Directory Structure
 
 ```
