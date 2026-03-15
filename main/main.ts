@@ -5,7 +5,7 @@ import * as https from 'https';
 import * as http from 'http';
 import * as url from 'url';
 import { execFile, execSync } from 'child_process';
-import Store = require('electron-store');
+import Store from 'electron-store';
 import { container } from '../core/container';
 import { PythonFFmpegAdapter } from '../core/adapters/PythonFFmpegAdapter';
 import { NodeProcessSpawner } from '../core/adapters/NodeProcessSpawner';
@@ -108,7 +108,7 @@ function getBundledFFmpegPath(): string | null {
  */
 function getFFmpegSystemPath(): string | null {
   try {
-    const cmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg';
+    const cmd = process.platform === 'win32' ? 'where ffmpeg 2>nul' : 'which ffmpeg 2>/dev/null';
     const result = execSync(cmd, { encoding: 'utf-8' }).trim();
     return result.split('\n')[0].trim();
   } catch {
@@ -118,7 +118,7 @@ function getFFmpegSystemPath(): string | null {
 
 function getFFprobeSystemPath(): string | null {
   try {
-    const cmd = process.platform === 'win32' ? 'where ffprobe' : 'which ffprobe';
+    const cmd = process.platform === 'win32' ? 'where ffprobe 2>nul' : 'which ffprobe 2>/dev/null';
     const result = execSync(cmd, { encoding: 'utf-8' }).trim();
     return result.split('\n')[0].trim();
   } catch {
@@ -174,9 +174,30 @@ function getVideoDurationSeconds(filePath: string): Promise<number | null> {
  */
 function getAppConfig(): IAppConfig {
   const bundledPath = getBundledFFmpegPath();
+  
+  // Resolve Python script path
+  let pythonScriptPath = path.join(__dirname, '../../src/videomerger/video_processor_cli.py');
+  
+  // In packaged app, check for the script in resources or unpacked asar
+  const packagedScriptPath = path.join(process.resourcesPath || '', 'video_processor_cli.py');
+  const unpackedScriptPath = pythonScriptPath.replace('app.asar', 'app.asar.unpacked');
+  
+  if (fs.existsSync(packagedScriptPath)) {
+    pythonScriptPath = packagedScriptPath;
+    console.log('[DEBUG] Using packaged Python script:', pythonScriptPath);
+  } else if (fs.existsSync(unpackedScriptPath)) {
+    pythonScriptPath = unpackedScriptPath;
+    console.log('[DEBUG] Using unpacked ASAR Python script:', pythonScriptPath);
+  } else {
+    console.log('[DEBUG] Using development Python script:', pythonScriptPath);
+  }
+
+  console.log('[DEBUG] FFmpeg Bundled Path:', bundledPath);
+  console.log('[DEBUG] Resources Path:', process.resourcesPath);
+
   return {
     pythonPath: 'python',
-    pythonScriptPath: path.join(__dirname, '../../src/videomerger/video_processor_cli.py'),
+    pythonScriptPath,
     supportedFormats: ['mp4', 'avi', 'mov', 'mkv', 'webm'],
     maxFileSizeMb: store.get('maxFileSizeMb', 500) as number,
     ...(bundledPath ? { ffmpegPath: bundledPath } : {}),
@@ -230,6 +251,9 @@ function createWindow(): void {
     },
     title: 'Video Merger',
     backgroundColor: '#1e1e1e',
+    icon: process.env.NODE_ENV === 'development'
+      ? path.join(__dirname, '../../resources/icon.png')
+      : path.join(process.resourcesPath, 'icon.png'),
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -665,10 +689,13 @@ function setupIPC(): void {
 }
 
 app.whenReady().then(() => {
+  console.log('App ready, initializing...');
   registerLocalVideoProtocol();
   setupDependencies();
+  console.log('Dependencies setup, creating window...');
   createWindow();
   setupIPC();
+  console.log('IPC setup complete.');
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

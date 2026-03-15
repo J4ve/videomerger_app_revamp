@@ -1,79 +1,38 @@
-# Video Merger Application
+# Bulk video merging app
 
-A hybrid video merging solution with both a **web application** and a **desktop application** for merging multiple video files. The project demonstrates clean architecture principles with a shared Python backend for FFmpeg video processing.
+A professional desktop solution for merging multiple video files with ease. Featuring a clean architecture built with **Electron**, **React**, and **TypeScript**, powered by high-performance **FFmpeg** processing via Python.
 
 ## 📖 Table of Contents
 
-- [Two Applications in One](#-two-applications-in-one)
 - [Features](#-features)
 - [Prerequisites](#-prerequisites)
 - [Quick Start](#-quick-start)
-- [Docker Deployment](#-docker-deployment-web-application-only)
+- [Docker Development](#-docker-development)
 - [Architecture & Project Structure](#️-architecture--project-structure)
 - [Running Tests](#-running-tests)
-- [Development](#-development)
-- [API Documentation](#-api-documentation-web-application)
+- [Development Workflow](#-development-workflow)
 - [Configuration](#️-configuration)
-- [Contributing](#-contributing)
+- [Future: Web Implementation](#-future-web-implementation)
 - [License](#-license)
-
-## 🎯 Two Applications in One
-
-This repository contains two distinct applications:
-
-1. **Web Application** - Flask-based web server with a browser interface
-2. **Desktop Application** - Electron app with React UI showcasing clean architecture patterns
-
-Both applications use the same Python backend for video processing with FFmpeg.
-
-### Which Application Should I Use?
-
-| Use Case | Recommended App |
-|----------|----------------|
-| Learning clean architecture patterns | Desktop App |
-| Local video processing with native UI | Desktop App |
-| Deploying to a server for team use | Web App |
-| API integration with other services | Web App |
-| Docker/container deployment | Web App |
-| Studying design patterns (DI, Repository, etc.) | Desktop App |
 
 ## ✨ Features
 
-### Common Features
-- 🎬 **Multiple Video Support**: Merge 2 or more videos seamlessly
-- 📦 **Multiple Formats**: Support for MP4, AVI, MOV, MKV, and WebM
-- 🧪 **Well Tested**: Comprehensive unit and integration tests
-- 🔒 **Secure**: File validation and sanitization built-in
-
-### Web Application Features
-- 🌐 **Browser-based UI**: Clean, intuitive web interface
-- 🐳 **Dockerized**: Easy deployment with Docker and Docker Compose
-- 🔌 **RESTful API**: Full API for programmatic access
-
-### Desktop Application Features  
-- 🖥️ **Native Desktop App**: Built with Electron + React + Vite
-- 🏗️ **Clean Architecture**: Framework-agnostic core with dependency injection
-- 🔄 **Modular Design**: Swappable components using design patterns
-- 📐 **Design Patterns**: Repository, Command, Strategy, Observer, and Adapter patterns
+- 🎬 **Multiple Video Support**: Merge 2 or more videos seamlessly.
+- 📦 **Cross-Platform Formats**: Support for `MP4`, `AVI`, `MOV`, `MKV`, and `WEBM`.
+- 🖥️ **Native Desktop Experience**: Built with Electron + React + Vite for a premium look and feel.
+- 🏗️ **Clean Architecture**: A framework-agnostic core with industry-standard design patterns (DI, Repository, Command, Strategy, Observer, and Adapter).
+- 🧪 **Reliable & Tested**: Comprehensive unit and integration tests using Vitest and Pytest.
+- 🔒 **Secure**: Robust file validation and sanitization.
+- 🐳 **Docker-Ready**: Complete containerized environment for both development and building production installers.
 
 ## 📋 Prerequisites
 
-### For Web Application
-- Python 3.8 or higher
-- FFmpeg (for video processing)
-- Docker (optional, for containerized deployment)
-
-### For Desktop Application
-- Python 3.8 or higher
-- FFmpeg (for video processing)
-- Node.js 18 or higher
-- npm (comes with Node.js)
+- **Python 3.8+** (for video processing)
+- **Node.js 18+** & **npm** (for desktop UI)
+- **FFmpeg** (packaged with the app, but optional for system-wide use)
+- **Docker Desktop** (optional, recommended for isolated builds)
 
 ## 🚀 Quick Start
-
-Choose the application you want to run:
-
-### Option 1: Desktop Application (Recommended)
 
 1. **Clone the repository**
    ```bash
@@ -81,104 +40,41 @@ Choose the application you want to run:
    cd videomerger_app_revamp
    ```
 
-2. **Install Node.js dependencies**
+2. **Install Dependencies**
    ```bash
-   npm install
+   npm install        # Node.js
+   pip install -r requirements.txt  # Python
    ```
 
-3. **Install Python dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Run the desktop app**
+3. **Run the App (Development Mode)**
    ```bash
    npm run dev
    ```
 
-   This starts the Vite dev server and Electron in development mode.
-
-   **Or build and run in production mode:**
+4. **Build & Package (Production)**
    ```bash
-   npm run build
-   npm start
+   npm run dist        # Native build
+   # OR use Docker for a clean environment-free build:
+   docker compose run builder
    ```
 
-### Option 2: Web Application
+## 🐳 Docker Development & Deployment
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/J4ve/videomerger_app_revamp.git
-   cd videomerger_app_revamp
-   ```
+We provide a robust Docker setup to simplify your workflow:
 
-2. **Create and activate a virtual environment**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+### Build Standalone Windows Installer
+Compile the Windows `.exe` without installing Node.js or Wine on your host machine:
+```bash
+docker compose run --rm builder
+```
+Output located in: `dist-bin/`
 
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   pip install -e .
-   ```
-
-4. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your preferred settings
-   ```
-
-5. **Run the application**
-   ```bash
-   python src/videomerger/app.py
-   ```
-
-6. **Open your browser**
-   Navigate to `http://localhost:5000`
-
-## 🐳 Docker Usage
-
-> **Note:** You must have **Docker Desktop** installed and running if you are on Windows. On Linux or macOS, the standard **Docker** engine is sufficient.
-
-### Building the Desktop Application Executable
-
-If you don't have Node.js or `npm` installed on your host system (e.g., on Windows), you can compile the Desktop Application into a standalone `.exe` using Docker Compose.
-
-1. Open a standard Windows Command Prompt (cmd) or PowerShell.
-2. Navigate to your project folder:
-   ```bash
-   cd C:\path\to\videomerger_app_revamp
-   ```
-3. Ensure Docker Desktop is running in the background.
-4. Run the builder service:
-   ```bash
-   docker compose run --rm builder
-   ```
-   *(If `docker compose` is not recognized, try `docker-compose run --rm builder`)*
-
-Docker will automatically download the necessary tools, build the app, and output your `VideoMerger Setup X.X.X.exe` into a new `dist-bin/` folder inside your project.
-
-### Running Live Development via Docker (`npm run dev`)
-
-If you want to work on the code and run the live development server but do not want to natively install Node.js:
-
+### isolated Development Environment
+Run the live development environment (Vite + Electron) inside a container:
 ```bash
 docker compose run --rm -p 3000:3000 dev-desktop
 ```
-This will containerize Node.js and Python and run `npm run dev` for you. You can see the React UI on `http://localhost:3000`. *(Note: to see the actual Electron application window popup, you must configure an X-Server like VcXsrv).*
-
-### Running the Web Application using Docker directly
-
-If you prefer to run the Flask Web Application instead, you can build and run it using the Docker CLI:
-
-```bash
-docker build -t videomerger .
-docker run -p 5000:5000 -v $(pwd)/uploads:/app/src/videomerger/static/uploads videomerger
-```
-
-The web application will be available at `http://localhost:5000`
+*(Note: requires an X-Server like VcXsrv to see the GUI popup)*
 
 ## 🏗️ Architecture & Project Structure
 
@@ -343,27 +239,15 @@ videomerger_app_revamp/
 
 ## 🧪 Running Tests
 
-### Web Application Tests
-
+### Desktop Application Tests
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src/videomerger
-
-# Run specific test file
-pytest tests/unit/test_app.py
+npm test          # Run Vitest suite
+npm test -- --watch  # Continuous testing
 ```
 
-### Desktop Application Tests
-
+### Python/Core Tests
 ```bash
-# Run tests with Vitest
-npm test
-
-# Run with watch mode
-npm test -- --watch
+pytest            # Run Python logic tests
 ```
 
 ## 💻 Development
@@ -490,74 +374,14 @@ Download a merged video file.
 
 ## ⚙️ Configuration
 
-### Desktop Application
+The application is configured via `main/main.ts` for Electron settings and environment variables for specific production flags.
 
-The desktop app is configured via `main/main.ts`:
+## 🚀 Future: Web Implementation
 
-```typescript
-const appConfig: IAppConfig = {
-  pythonPath: 'python',
-  pythonScriptPath: path.join(__dirname, '../../src/videomerger/video_processor_cli.py'),
-  supportedFormats: ['mp4', 'avi', 'mov', 'mkv', 'webm'],
-};
-```
+While the current focus is on a native desktop experience, the shared Python backend and clean architecture interfaces are designed to support a future **Flask/Web implementation**. This is currently preserved for legacy/experimental use in the `src/videomerger/` folder.
 
-### Web Application
-
-Configuration is managed through environment variables. See `.env.example` for available options:
-
-- `FLASK_ENV`: Environment (development/production)
-- `SECRET_KEY`: Flask secret key
-- `MAX_CONTENT_LENGTH`: Maximum file upload size
-- `UPLOAD_FOLDER`: Directory for uploaded files
-- `OUTPUT_FOLDER`: Directory for output files
-
-## 🤝 Contributing
-
-We welcome contributions to both the web and desktop applications!
-
-### Contribution Guidelines
-
-1. **Fork the repository**
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-3. **Make your changes**
-   - Follow existing code style and patterns
-   - Add tests for new features
-   - Update documentation as needed
-4. **Run tests and quality checks**
-   ```bash
-   # For Python/web app
-   pytest
-   black src/videomerger tests
-   flake8 src/videomerger tests
-   
-   # For TypeScript/desktop app
-   npm test
-   npm run lint
-   npm run format
-   ```
-5. **Commit your changes**
-   ```bash
-   git commit -m 'feat: add amazing feature'
-   ```
-6. **Push to your fork**
-   ```bash
-   git push origin feature/amazing-feature
-   ```
-7. **Open a Pull Request**
-
-### Areas for Contribution
-
-- **Desktop App**: Enhance UI components, add new design patterns, improve architecture
-- **Web App**: Add new API endpoints, improve error handling, enhance security
-- **Testing**: Increase test coverage, add integration tests
-- **Documentation**: Improve guides, add examples, fix typos
-- **Performance**: Optimize video processing, reduce memory usage
-
-For detailed development guidelines, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+- **Current Status**: Development Focused on Desktop.
+- **Legacy API Documentation**: Available in [docs/API.md](docs/API.md).
 
 ## 📄 License
 
@@ -565,18 +389,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- SE2 Project Team
-- **Web App**: Flask Framework
-- **Desktop App**: Electron, React, Vite
-- **Video Processing**: FFmpeg Community
-- Clean Architecture principles by Robert C. Martin
+- **Core**: Electron, React, Vite
+- **Processing**: FFmpeg Community
+- **Architecture**: Robert C. Martin (Uncle Bob)
 
-## 💬 Support
-
-For issues and questions, please open an issue on the [GitHub repository](https://github.com/J4ve/videomerger_app_revamp/issues).
-
-## 🔗 Additional Resources
-
-- [DESKTOP_README.md](DESKTOP_README.md) - Detailed desktop app architecture and design patterns
-- [docs/API.md](docs/API.md) - Complete web API documentation
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) - Development guide for contributors
+---
+*Developed by J4ve*

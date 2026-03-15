@@ -1,6 +1,6 @@
 {
   "name": "videomerger-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Desktop application for merging multiple videos using Electron + React + Python",
   "main": "dist/main/main.js",
   "scripts": {
@@ -12,7 +12,8 @@
     "build:main": "tsc -p tsconfig.main.json",
     "preview": "vite preview",
     "start": "npm run build && electron .",
-    "package": "npm run build && electron-builder --win",
+    "prepackage": "node -e \"const fs=require('fs'); if(!fs.existsSync('resources'))fs.mkdirSync('resources',{recursive:true}); fs.copyFileSync('src/videomerger/video_processor_cli.py', 'resources/video_processor_cli.py')\"",
+    "package": "npm run build && npm run prepackage && electron-builder --win",
     "test": "vitest",
     "lint": "eslint main/ renderer/ core/",
     "format": "prettier --write \"**/*.{ts,tsx}\""
@@ -24,7 +25,14 @@
       "output": "dist-bin"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "files": [
       "dist/**/*",
@@ -32,6 +40,12 @@
       "core/**/*",
       "src/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "src/videomerger/video_processor_cli.py"
+    ],
+    "extraResources": [
+      "resources/**/*"
     ]
   },
   "keywords": [

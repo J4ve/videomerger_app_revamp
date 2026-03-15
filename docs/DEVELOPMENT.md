@@ -467,6 +467,8 @@ Accessible via ⚙ button in the header. Tabs:
 
 ### FFmpeg Bundling
 
+The app is currently packaged with **FFmpeg version 2026-03-12-git-9dc44b43b2-full_build-www.gyan.dev**.
+
 See [ffmpeg-bundling.md](./ffmpeg-bundling.md) for details on including FFmpeg binaries with the installer.
 
 ### TypeScript Tests
