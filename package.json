@@ -1,6 +1,6 @@
 {
   "name": "videomerger-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Desktop application for merging multiple videos using Electron + React + Python",
   "main": "dist/main/main.js",
   "scripts": {
@@ -12,9 +12,41 @@
     "build:main": "tsc -p tsconfig.main.json",
     "preview": "vite preview",
     "start": "npm run build && electron .",
+    "prepackage": "node -e \"const fs=require('fs'); if(!fs.existsSync('resources'))fs.mkdirSync('resources',{recursive:true}); fs.copyFileSync('src/videomerger/video_processor_cli.py', 'resources/video_processor_cli.py')\"",
+    "package": "npm run build && npm run prepackage && electron-builder --win",
     "test": "vitest",
     "lint": "eslint main/ renderer/ core/",
     "format": "prettier --write \"**/*.{ts,tsx}\""
+  },
+  "build": {
+    "appId": "com.videomerger.app",
+    "productName": "VideoMerger",
+    "directories": {
+      "output": "dist-bin"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "files": [
+      "dist/**/*",
+      "renderer/**/*",
+      "core/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "src/videomerger/video_processor_cli.py"
+    ],
+    "extraResources": [
+      "resources/**/*"
+    ]
   },
   "keywords": [
     "electron",
@@ -26,6 +58,9 @@
   "author": "Video Merger Team",
   "license": "MIT",
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
@@ -35,16 +70,18 @@
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
     "eslint": "^8.56.0",
     "eslint-plugin-react": "^7.33.2",
+    "jsdom": "^28.1.0",
     "prettier": "^3.1.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.10",
     "vitest": "^1.1.0"
   },
   "dependencies": {
+    "electron-store": "^8.1.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "electron-store": "^8.1.0"
+    "react-dom": "^18.2.0"
   }
 }

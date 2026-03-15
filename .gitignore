@@ -215,7 +215,14 @@ yarn.lock
 
 # Electron
 dist/
+dist-bin/
 out/
 
 # TypeScript
 *.tsbuildinfo
+
+# Large Binaries
+*.zip
+*.7z
+resources/ffmpeg/
+resources/video_processor_cli.py

@@ -259,3 +259,57 @@ if (mergeResponse.ok) {
   window.location.href = '/api/download/merged.mp4';
 }
 ```
+
+---
+
+## Desktop App IPC API (Electron)
+
+The desktop application uses Electron IPC for communication between the renderer (React) and main (Node.js) processes via `window.electronAPI`.
+
+### IPC Channels
+
+| Channel | Direction | Description |
+|---------|-----------|-------------|
+| `select-video-files` | Renderer → Main | Opens file dialog, returns `string[]` paths |
+| `select-save-location` | Renderer → Main | Opens save dialog, returns `string` path |
+| `validate-videos` | Renderer → Main | Validates video files, returns `boolean` |
+| `get-video-info` | Renderer → Main | Gets video metadata, returns `IVideoMetadata` |
+| `merge-videos` | Renderer → Main | Merges videos with options |
+| `check-ffmpeg` | Renderer → Main | Basic FFmpeg check: `{ available, version }` |
+| `check-ffmpeg-details` | Renderer → Main | Detailed FFmpeg info: `{ available, version, path, isBundled }` |
+| `open-folder` | Renderer → Main | Opens file in system file manager |
+| `get-settings` | Renderer → Main | Returns all stored settings |
+| `save-settings` | Renderer → Main | Persists settings to electron-store |
+| `google-oauth-login` | Renderer → Main | Opens Google OAuth2 popup, returns `{ success, user }` |
+| `google-oauth-logout` | Renderer → Main | Clears stored Google auth tokens |
+| `google-auth-status` | Renderer → Main | Returns `{ isLoggedIn, user }` |
+| `upload-to-youtube` | Renderer → Main | Uploads video to YouTube via Data API v3 |
+| `processing-event` | Main → Renderer | Real-time merge progress events |
+
+### merge-videos Options
+
+```typescript
+interface IVideoMergeOptions {
+  inputPaths: string[];
+  outputPath: string;
+  quality?: 'low' | 'medium' | 'high';
+  overwrite?: boolean;
+  standardization?: {
+    resolution?: 'original' | '720p' | '1080p' | '4k';
+    fps?: 'original' | '24' | '30' | '60';
+  };
+}
+```
+
+### upload-to-youtube Options
+
+```typescript
+{
+  filePath: string;      // Path to video file
+  title: string;         // Video title (required)
+  description?: string;  // Video description
+  privacy?: 'public' | 'private' | 'unlisted';
+}
+```
+
+Returns: `{ success: boolean; videoId?: string; url?: string; error?: string }`

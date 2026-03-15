@@ -28,6 +28,15 @@ export interface IVideoProcessingResult {
 }
 
 /**
+ * Video standardization settings
+ * Applied to all videos being merged to ensure uniform output
+ */
+export interface IVideoStandardization {
+  resolution?: 'original' | '720p' | '1080p' | '4k';
+  fps?: 'original' | '24' | '30' | '60';
+}
+
+/**
  * Video merge options
  */
 export interface IVideoMergeOptions {
@@ -35,6 +44,27 @@ export interface IVideoMergeOptions {
   outputPath: string;
   quality?: 'low' | 'medium' | 'high';
   overwrite?: boolean;
+  standardization?: IVideoStandardization;
+}
+
+/**
+ * YouTube upload configuration
+ */
+export interface IYouTubeUploadOptions {
+  filePath: string;
+  title: string;
+  description?: string;
+  privacy?: 'public' | 'private' | 'unlisted';
+}
+
+/**
+ * YouTube upload result
+ */
+export interface IYouTubeUploadResult {
+  success: boolean;
+  videoId?: string;
+  url?: string;
+  error?: string;
 }
 
 /**
@@ -220,6 +250,7 @@ export interface IAppConfig {
   supportedFormats: string[];
   tempDir?: string;
   maxFileSizeMb?: number;
+  ffmpegPath?: string;
 }
 
 /**

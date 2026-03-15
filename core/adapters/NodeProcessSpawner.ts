@@ -6,6 +6,8 @@ import { spawn, ChildProcess } from 'child_process';
  * Abstracts process spawning to enable dependency injection and testing
  */
 export class NodeProcessSpawner implements IProcessSpawner {
+  private static readonly MAX_CAPTURE_BYTES = 1_000_000;
+
   /**
    * Spawn a child process
    * @param command - Command to execute
@@ -29,12 +31,18 @@ export class NodeProcessSpawner implements IProcessSpawner {
       process.stdout.on('data', (data) => {
         const str = data.toString();
         stdout += str;
+        if (stdout.length > NodeProcessSpawner.MAX_CAPTURE_BYTES) {
+          stdout = stdout.slice(-NodeProcessSpawner.MAX_CAPTURE_BYTES);
+        }
         if (onStdout) onStdout(str);
       });
 
       process.stderr.on('data', (data) => {
         const str = data.toString();
         stderr += str;
+        if (stderr.length > NodeProcessSpawner.MAX_CAPTURE_BYTES) {
+          stderr = stderr.slice(-NodeProcessSpawner.MAX_CAPTURE_BYTES);
+        }
         if (onStderr) onStderr(str);
       });
 

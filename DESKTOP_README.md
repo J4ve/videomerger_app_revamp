@@ -127,10 +127,18 @@ This starts Vite dev server (port 3000) and Electron in development mode.
 
 ## Building
 
+### Standard Build (Requires Node.js)
 ```bash
 npm run build
 npm start
 ```
+
+### Windows Build via Docker (No Node.js Required)
+If you are on Windows and don't want to install Node.js locally, you can compile the `.exe` using Docker:
+```bash
+docker compose run --rm builder
+```
+The standalone executable will be generated inside the `dist-bin/` folder.
 
 ## Key Principles
 

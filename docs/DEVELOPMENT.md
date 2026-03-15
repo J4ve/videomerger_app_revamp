@@ -8,24 +8,35 @@
    ```bash
    git clone https://github.com/J4ve/videomerger_app_revamp.git
    cd videomerger_app_revamp
-   ```
+   ```git reset
+   
 
-2. **Set up Python virtual environment**
+2. **Install Node.js & npm** (required for Desktop App development)
+   - **Windows**: Download the LTS version from [nodejs.org](htgit statps://nodejs.org/) and install it.
+   - **macOS**: `brew install node`
+   - **Ubuntu/Debian**: `sudo apt-get install nodejs npm`
+   
+   *(Verify installation by running `node -v` and `npm -v` in your terminal)*
+
+3. **Set up Python virtual environment**
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. **Install development dependencies**
+4. **Install development dependencies**
    ```bash
    pip install -r requirements.txt
    pip install -e ".[dev]"
+   
+   # Also install npm dependencies:
+   npm install
    ```
 
-4. **Install FFmpeg** (for video processing)
+5. **Install FFmpeg** (for video processing)
    - **macOS**: `brew install ffmpeg`
    - **Ubuntu/Debian**: `sudo apt-get install ffmpeg`
-   - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html)
+   - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) or use `winget install ffmpeg`
 
 ## Project Structure
 
@@ -273,7 +284,32 @@ logger.error('Error message')
 
 ## Docker Development
 
-### Build and Run
+> **Note:** You must have **Docker Desktop** installed and running to use these features on Windows. If you are on Linux or macOS, the standard **Docker** engine setup is sufficient.
+
+### Containerized Desktop App Development (`npm run dev`)
+If you want to run the live development environment (`npm run dev`) *without* installing Node.js/Python natively, we provide a unified Docker container config.
+
+1. Ensure Docker Desktop is running.
+2. If you want the actual Desktop GUI window to open, you need an X-Server running on your host (e.g. **VcXsrv** for Windows or **XQuartz** for Mac) configured to "Disable access control" so Docker can send the window to your screen.
+3. Start the live-reload dev server:
+   ```bash
+   docker compose run --rm -p 3000:3000 dev-desktop
+   ```
+   *Note:* Even if the Electron window fails to appear (due to X-server configuration), you can still view and develop the React frontend by going to `http://localhost:3000` in your host browser!
+
+### Building the Desktop Application Executable (Windows/No-Node)
+
+If you need to build the Windows `.exe` standalone application but don't have Node.js installed locally, use the Docker Builder service (which runs `electron-builder` under Wine):
+
+```bash
+docker compose run --rm builder
+```
+
+The resulting executable will be saved in the `dist-bin/` directory. Note: You must run this from a standard Windows command prompt, not inside the Docker Desktop VM.
+
+### Web Application Development (Flask)
+
+If you are developing the Flask api, you can build and run it via Compose:
 
 ```bash
 docker-compose up --build
@@ -344,3 +380,113 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 - [FFmpeg Documentation](https://ffmpeg.org/documentation.html)
 - [Python Best Practices](https://docs.python-guide.org/)
 - [Testing with Pytest](https://docs.pytest.org/)
+
+---
+
+## Desktop Application Features (Electron + React)
+
+### Architecture
+
+The desktop app uses **Electron** (main process) + **React** (renderer) + **Python** (FFmpeg subprocess). All communication is via IPC with `contextBridge`. Core business logic is framework-agnostic using TypeScript interfaces with DI, Repository, Command, Adapter, and Strategy patterns.
+
+### Running the Desktop App
+
+```bash
+npm install
+npm run dev         # Run renderer (Vite) + main (Electron) concurrently
+npm run test        # Run vitest
+npm run build       # Production build
+```
+
+### 4-Step Wizard
+
+| Step | Name | Description |
+|------|------|-------------|
+| 0 | Auth | Google sign-in or skip |
+| 1 | Add Videos | Drag-and-drop or browse; set resolution/FPS |
+| 2 | Arrange | Sort, duplicate, drag-and-drop reorder |
+| 3 | Preview | Review all settings before merge |
+| 4 | Finalize | Choose output path, start merge, track progress |
+
+### Drag-and-Drop (Step 1)
+
+Drop video files directly onto the dropzone area. Supported formats: `MP4`, `MOV`, `AVI`, `MKV`, `WEBM`. Visual feedback (blue glow, icon change) on drag-over. Unsupported files are silently skipped with a status message.
+
+### Video Standardization (Step 1)
+
+Two dropdowns below the dropzone:
+- **Resolution**: Original, 720p, 1080p, 4K
+- **FPS**: Original, 24, 30, 60
+
+These settings are passed via `standardization` field in merge options to ensure uniform output.
+
+### FFmpeg Availability Indicator
+
+The header shows an FFmpeg status chip with a colored dot:
+- **Green dot** = Installed
+- **Red dot** = Not Installed
+
+Click the chip to open a dialog showing version, path, and whether it's bundled or from system PATH.
+
+### Arrange Screen Enhancements (Step 2)
+
+- **Sorting**: Sort by Name (ascending/descending) via toolbar
+- **Duplicate**: Click "Dup" to clone a video entry in the sequence
+- **Drag-and-drop reorder**: Drag items by the handle (⠿) to rearrange
+- **Up/Down/Remove**: Standard reorder and removal buttons
+
+### Preview Step (Step 3)
+
+Shows a summary of:
+- Ordered file list
+- Selected standardization settings
+- Auth status and YouTube availability
+
+### YouTube Upload
+
+After a successful merge, logged-in users see a YouTube upload form:
+- Title (required), Description, Privacy (private/unlisted/public)
+- Uses YouTube Data API v3 resumable upload
+- Upload result shows direct video URL
+
+### Google OAuth2
+
+- Auth prompt on first launch: "Sign in with Google" or "Continue without account"
+- Opens native OAuth popup (Electron BrowserWindow) → local HTTP redirect callback
+- Tokens stored in `electron-store`
+- When not logged in: YouTube config/upload features are disabled
+
+### Dashboard & Settings
+
+Accessible via ⚙ button in the header. Tabs:
+- **General**: Max file size, default resolution/FPS
+- **Presets**: Save/load standardization presets
+- **YouTube**: Default title, description, privacy (requires login)
+- **FFmpeg**: Status, version, path display
+- **Account**: Google account info, sign out
+
+### FFmpeg Bundling
+
+The app is currently packaged with **FFmpeg version 2026-03-12-git-9dc44b43b2-full_build-www.gyan.dev**.
+
+See [ffmpeg-bundling.md](./ffmpeg-bundling.md) for details on including FFmpeg binaries with the installer.
+
+### TypeScript Tests
+
+```bash
+npm test                    # Run vitest
+npx vitest run --reporter verbose  # Verbose output
+```
+
+Tests use **vitest** + **@testing-library/react** with **jsdom** environment. The setup file (`renderer/src/__tests__/setup.ts`) mocks all `window.electronAPI` methods.
+
+Test coverage:
+- Auth prompt rendering and interactions
+- Drag-and-drop file acceptance/rejection
+- Standardization dropdown defaults and changes
+- FFmpeg indicator display and dialog
+- Arrange screen sorting, duplication, reordering
+- Preview step content verification
+- YouTube auth-gated UI elements
+- Dashboard tabs and navigation
+- Wizard step validation and navigation
