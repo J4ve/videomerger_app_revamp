@@ -93,22 +93,26 @@ const App: React.FC = () => {
     checkFFmpeg();
     checkAuthStatus();
 
-    window.electronAPI.onProcessingEvent((event) => {
-      setStatus(event.message || event.type);
-      if (event.type === 'progress') {
-        setProgress(event.progress || 0);
-      } else if (event.type === 'error') {
-        setIsMerging(false);
-        setStatus(event.error?.message || event.message || 'Merge failed.');
-      } else if (event.type === 'complete') {
-        setIsMerging(false);
-        setMergeComplete(true);
-        setProgress(100);
-        if (event.result?.outputPath) {
-          setOutputPath(event.result.outputPath);
+    if (window.electronAPI) {
+      window.electronAPI.onProcessingEvent((event) => {
+        setStatus(event.message || event.type);
+        if (event.type === 'progress') {
+          setProgress(event.progress || 0);
+        } else if (event.type === 'error') {
+          setIsMerging(false);
+          setStatus(event.error?.message || event.message || 'Merge failed.');
+        } else if (event.type === 'complete') {
+          setIsMerging(false);
+          setMergeComplete(true);
+          setProgress(100);
+          if (event.result?.outputPath) {
+            setOutputPath(event.result.outputPath);
+          }
         }
-      }
-    });
+      });
+    } else {
+      console.warn('Electron API not found. Running in browser mode.');
+    }
   }, []);
 
   const canProceedStep1 = selectedFiles.length >= 2;
@@ -120,6 +124,10 @@ const App: React.FC = () => {
   );
 
   const checkFFmpeg = async () => {
+    if (!window.electronAPI) {
+      setFFmpegStatus('Not available (Browser Mode)');
+      return;
+    }
     try {
       const result = await window.electronAPI.checkFFmpegDetails();
       setFFmpegDetails(result);
@@ -131,6 +139,10 @@ const App: React.FC = () => {
   };
 
   const checkAuthStatus = async () => {
+    if (!window.electronAPI) {
+      setAuthChecked(true);
+      return;
+    }
     try {
       const result = await window.electronAPI.getGoogleAuthStatus();
       setIsLoggedIn(result.isLoggedIn);
@@ -142,6 +154,11 @@ const App: React.FC = () => {
   };
 
   const handleGoogleLogin = async () => {
+    if (!window.electronAPI) {
+      alert('Google login is only available in the Desktop application.');
+      setStep(1);
+      return;
+    }
     const result = await window.electronAPI.googleOAuthLogin();
     if (result.success && result.user) {
       setIsLoggedIn(true);
@@ -155,13 +172,19 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await window.electronAPI.googleOAuthLogout();
+    if (window.electronAPI) {
+      await window.electronAPI.googleOAuthLogout();
+    }
     setIsLoggedIn(false);
     setGoogleUser(null);
   };
 
   // --- File Selection ---
   const handleSelectFiles = async () => {
+    if (!window.electronAPI) {
+      alert('File selection is only available in the Desktop application. In browser mode, dragging files is preferred (if implemented) or use the desktop app.');
+      return;
+    }
     const files = await window.electronAPI.selectVideoFiles();
     if (files && files.length > 0) {
       const uniqueFiles = Array.from(new Set([...selectedFiles, ...files]));
@@ -300,6 +323,10 @@ const App: React.FC = () => {
 
   // --- Output & Merge ---
   const handleSelectOutput = async () => {
+    if (!window.electronAPI) {
+      alert('Save location selection is only available in the Desktop application.');
+      return;
+    }
     const path = await window.electronAPI.selectSaveLocation();
     if (path) {
       setOutputPath(path);
@@ -314,6 +341,11 @@ const App: React.FC = () => {
     }
     if (!outputPath) {
       setStatus('Please select output location');
+      return;
+    }
+
+    if (!window.electronAPI) {
+      setStatus('Merge feature is only available in the Desktop application.');
       return;
     }
 
@@ -346,7 +378,7 @@ const App: React.FC = () => {
   };
 
   const handleOpenFolder = () => {
-    if (outputPath) {
+    if (outputPath && window.electronAPI) {
       window.electronAPI.openFolder(outputPath);
     }
   };
@@ -354,6 +386,10 @@ const App: React.FC = () => {
   const handleUploadToYouTube = async () => {
     if (!outputPath || !ytTitle) {
       setStatus('Please provide a title for the YouTube upload.');
+      return;
+    }
+    if (!window.electronAPI) {
+      setStatus('YouTube upload is only available in the Desktop application.');
       return;
     }
     setIsUploading(true);
@@ -460,7 +496,7 @@ const App: React.FC = () => {
               <img src="/app-icon.svg" alt="Video Merger icon" className="brand-logo" />
               <div>
                 <h1>VideoMerger</h1>
-                <p>Desktop merge wizard</p>
+                <p>Bulk video merging app</p>
               </div>
             </div>
           </header>
@@ -527,7 +563,7 @@ const App: React.FC = () => {
             <img src="/app-icon.svg" alt="Video Merger icon" className="brand-logo" />
             <div>
               <h1>VideoMerger</h1>
-              <p>Desktop merge wizard</p>
+              <p>Bulk video merging app</p>
             </div>
           </div>
 
@@ -924,6 +960,7 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
   }, []);
 
   const loadSettings = async () => {
+    if (!window.electronAPI) return;
     try {
       const data = await window.electronAPI.getSettings();
       if (data) {
@@ -937,7 +974,9 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
   const handleSave = async () => {
     setIsSaving(true);
-    await window.electronAPI.saveSettings({ ...settings, presets });
+    if (window.electronAPI) {
+      await window.electronAPI.saveSettings({ ...settings, presets });
+    }
     onStandardizationChange({
       resolution: settings.defaultResolution || 'original',
       fps: settings.defaultFps || 'original',
@@ -1115,7 +1154,7 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
                     <option value="public">Public</option>
                   </select>
                 </label>
-                <button className="btn btn-primary" onClick={handleSave} disabled={isSaving} style={{ marginTop: 16 }}>
+                <button className="btn btn-primary" onClick={handleSave} disabled={isSaving || !window.electronAPI} style={{ marginTop: 16 }}>
                   {isSaving ? 'Saving...' : 'Save YouTube Defaults'}
                 </button>
               </>

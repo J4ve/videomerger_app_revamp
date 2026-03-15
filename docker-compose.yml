@@ -1,19 +1,6 @@
 version: '3.8'
 
 services:
-  web:
-    build: .
-    ports:
-      - "5000:5000"
-    volumes:
-      - ./src/videomerger/static/uploads:/app/src/videomerger/static/uploads
-      - ./src/videomerger/static/outputs:/app/src/videomerger/static/outputs
-    environment:
-      - FLASK_ENV=production
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
-      - MAX_CONTENT_LENGTH=524288000
-    restart: unless-stopped
-
   # This service provides a Node.js builder using Wine so Windows users 
   # can build the Electron executable (.exe) without installing Node.js locally.
   builder:
@@ -24,8 +11,8 @@ services:
       - .:/project
       # Using a named volume for node_modules avoids Windows symlink issues inside Linux docker!
       - node_modules:/project/node_modules
-    # Command installs dependencies, builds the app, and creates the .exe in dist-bin/
-    command: bash -c "npm install && npm run package"
+    # Command cleans previous builds, ensures binaries are executable, installs dependencies, downloads FFmpeg for bundling, and builds the app.
+    command: bash -c "rm -rf dist-bin/* && chmod -R +x node_modules/.bin/ 2>/dev/null || true && mkdir -p resources/ffmpeg && curl -L https://github.com/GyanD/codexffmpeg/releases/download/6.0/ffmpeg-6.0-full_build-shared.zip -o ffmpeg.zip && unzip -o ffmpeg.zip -d ffmpeg_temp && cp ffmpeg_temp/ffmpeg-6.0-full_build-shared/bin/ffmpeg.exe resources/ffmpeg/ && rm -rf ffmpeg.zip ffmpeg_temp && npm install && npm run package"
 
   # Containerized Dev Environment for the Desktop App (Node.js + Python)
   dev-desktop:

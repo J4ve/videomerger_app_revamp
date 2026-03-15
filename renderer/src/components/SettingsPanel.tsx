@@ -15,6 +15,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
   }, []);
 
   const loadSettings = async () => {
+    if (!window.electronAPI) return;
     const data = await window.electronAPI.getSettings();
     if (data) {
       setSettings(data);
@@ -23,7 +24,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose }) => {
 
   const handleSave = async () => {
     setIsSaving(true);
-    await window.electronAPI.saveSettings(settings);
+    if (window.electronAPI) {
+      await window.electronAPI.saveSettings(settings);
+    }
     setIsSaving(false);
     onClose();
   };

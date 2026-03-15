@@ -63,6 +63,7 @@ body {
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 16px;
+  -webkit-app-region: drag;
 }
 
 .brand {
@@ -115,6 +116,18 @@ body {
 .status-chip:hover {
   border-color: var(--blue-400);
   box-shadow: 0 0 0 2px rgba(47, 144, 245, 0.15);
+}
+
+.status-chip,
+.mini-btn,
+.btn,
+.std-select,
+.yt-input,
+.dropzone,
+.file-remove,
+.drag-handle,
+.sequence-actions button {
+  -webkit-app-region: no-drag;
 }
 
 .status-chip-label {

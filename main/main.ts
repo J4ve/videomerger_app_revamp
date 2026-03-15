@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
@@ -143,7 +143,16 @@ function createWindow(): void {
     },
     title: 'Video Merger',
     backgroundColor: '#1e1e1e',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#1e1e1e',
+      symbolColor: '#ffffff',
+      height: 32
+    },
   });
+
+  // Remove the default menu
+  Menu.setApplicationMenu(null);
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:3000');
