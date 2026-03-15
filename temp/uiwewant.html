@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Merger Wizard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // Custom Dark Black Olive Theme
+                        olive: {
+                            900: '#141512', // Very Dark
+                            800: '#20211d', // Background
+                            700: '#3b3c36', // True Black Olive
+                            600: '#4d4f47', // Lighter border
+                            500: '#64665c',
+                            400: '#87897e',
+                            300: '#abada3',
+                            200: '#cfd0ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #141512;
+            color: #e2e8f0;
+        }
+
+        .step-transition {
+            transition: all 0.3s ease-in-out;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Custom Scrollbar styled for Olive theme */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #20211d; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4d4f47; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64665c; 
+        }
+
+        .dropzone-active {
+            border-color: #3b82f6;
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #3b82f6;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-olive-900 to-olive-800">
+
+    <div class="w-full max-w-5xl h-[85vh] bg-olive-900 border border-olive-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
+        
+        <!-- Header / Constant Wizard Stepper -->
+        <div class="px-6 py-4 border-b border-olive-700 bg-olive-900 flex justify-between items-center z-20 shrink-0">
+            <!-- Left: Logo -->
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-film text-blue-500 text-2xl"></i>
+                <h1 class="text-xl font-bold text-white hidden md:block tracking-wide">Video<span class="text-blue-500">Merger</span></h1>
+            </div>
+
+            <!-- Center: 1-2-3 Stepper -->
+            <div class="flex items-center gap-2 sm:gap-4 absolute left-1/2 transform -translate-x-1/2">
+                <!-- Step 1 -->
+                <div class="flex flex-col items-center gap-1">
+                    <div id="circle-1" class="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-[0_0_10px_rgba(37,99,235,0.5)] transition-colors duration-300">1</div>
+                </div>
+                <!-- Line 1 -->
+                <div class="w-8 sm:w-16 h-1 bg-olive-700 rounded-full overflow-hidden">
+                    <div id="line-1" class="h-full bg-blue-500 w-0 transition-all duration-500"></div>
+                </div>
+                <!-- Step 2 -->
+                <div class="flex flex-col items-center gap-1">
+                    <div id="circle-2" class="w-8 h-8 rounded-full bg-olive-700 text-olive-300 flex items-center justify-center font-bold text-sm transition-colors duration-300">2</div>
+                </div>
+                <!-- Line 2 -->
+                <div class="w-8 sm:w-16 h-1 bg-olive-700 rounded-full overflow-hidden">
+                    <div id="line-2" class="h-full bg-blue-500 w-0 transition-all duration-500"></div>
+                </div>
+                <!-- Step 3 -->
+                <div class="flex flex-col items-center gap-1">
+                    <div id="circle-3" class="w-8 h-8 rounded-full bg-olive-700 text-olive-300 flex items-center justify-center font-bold text-sm transition-colors duration-300">3</div>
+                </div>
+            </div>
+
+            <!-- Right: Settings & Profile -->
+            <div class="flex items-center gap-3">
+                <button class="w-10 h-10 rounded-full bg-olive-800 hover:bg-olive-700 border border-olive-600 flex items-center justify-center text-olive-300 hover:text-white transition-colors">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+                <div class="h-6 w-[1px] bg-olive-700 mx-1"></div>
+                <button class="w-10 h-10 rounded-full bg-olive-800 hover:bg-olive-700 border border-olive-600 flex items-center justify-center text-olive-300 hover:text-white transition-colors overflow-hidden">
+                    <img src="https://ui-avatars.com/api/?name=John+Doe&background=3b82f6&color=fff&bold=true" alt="Profile" class="w-full h-full object-cover">
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 relative overflow-hidden p-6 bg-olive-800/50">
+            
+            <!-- STEP 1: UPLOAD -->
+            <div id="step-1" class="absolute inset-0 p-6 fade-in flex flex-col">
+                <h2 class="text-2xl font-semibold mb-6 text-white">Add Your Videos</h2>
+                
+                <!-- Dropzone -->
+                <div id="dropzone" class="flex-1 border-2 border-dashed border-olive-600 rounded-xl flex flex-col items-center justify-center transition-colors cursor-pointer hover:border-olive-500 bg-olive-800/70 relative group">
+                    <input type="file" id="file-input" multiple accept="video/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20">
+                    <div class="text-center pointer-events-none z-10">
+                        <div class="w-16 h-16 bg-olive-700 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform shadow-lg">
+                            <i class="fa-solid fa-cloud-arrow-up text-2xl text-blue-400"></i>
+                        </div>
+                        <p class="text-lg font-medium text-olive-200">Click to add video or drag & drop</p>
+                        <p class="text-sm text-olive-400 mt-2">MP4, MOV, AVI supported</p>
+                    </div>
+                </div>
+
+                <!-- Video List (Hidden initially) -->
+                <div id="video-list-container" class="hidden mt-6 flex-1 overflow-y-auto pr-2">
+                    <h3 class="text-sm font-semibold text-olive-400 uppercase tracking-wider mb-3">Selected Videos</h3>
+                    <div id="video-list" class="space-y-2">
+                        <!-- Items injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 2: ARRANGEMENT -->
+            <div id="step-2" class="absolute inset-0 p-6 hidden fade-in flex flex-col">
+                <div class="flex justify-between items-end mb-4">
+                    <h2 class="text-2xl font-semibold text-white">Arrange Sequence</h2>
+                    
+                    <!-- Toolbar -->
+                    <div class="flex items-center gap-4 bg-olive-800 p-2 rounded-lg border border-olive-700 shadow-md">
+                        <!-- Sort -->
+                        <div class="relative">
+                            <select id="sort-select" class="bg-olive-700 text-sm text-white rounded px-3 py-1.5 outline-none border border-olive-600 focus:border-blue-500 appearance-none pr-8 cursor-pointer">
+                                <option value="manual">Manual Order</option>
+                                <option value="date">Sort by Date</option>
+                                <option value="time">Sort by Time</option>
+                                <option value="name">Sort by Name</option>
+                            </select>
+                            <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-xs text-olive-400 pointer-events-none"></i>
+                        </div>
+
+                        <!-- Allow Duplicates -->
+                        <div class="flex items-center gap-2 border-l border-olive-600 pl-4">
+                            <span class="text-xs text-olive-300">Allow Duplicates</span>
+                            <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                <input type="checkbox" name="toggle" id="dup-toggle" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer border-olive-600 left-0 transition-all duration-300"/>
+                                <label for="dup-toggle" class="toggle-label block overflow-hidden h-5 rounded-full bg-olive-600 cursor-pointer"></label>
+                            </div>
+                        </div>
+
+                        <!-- Main Lock -->
+                        <div class="flex items-center gap-2 border-l border-olive-600 pl-4">
+                            <span class="text-xs text-olive-300">Lock All</span>
+                            <button id="main-lock-btn" class="w-8 h-8 rounded bg-olive-700 hover:bg-olive-600 flex items-center justify-center text-olive-400 hover:text-white transition-colors" title="Lock/Unlock All">
+                                <i class="fa-solid fa-lock"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex-1 bg-olive-800/80 rounded-xl border border-olive-700 overflow-hidden flex flex-col shadow-inner">
+                    <div class="bg-olive-800 p-3 grid grid-cols-12 gap-4 text-xs font-semibold text-olive-400 uppercase tracking-wider border-b border-olive-700">
+                        <div class="col-span-1 text-center">Order</div>
+                        <div class="col-span-7">File Name</div>
+                        <div class="col-span-2 text-center">Status</div>
+                        <div class="col-span-2 text-center">Actions</div>
+                    </div>
+                    <div id="arrange-list" class="overflow-y-auto flex-1 p-2 space-y-1">
+                        <!-- List items injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 3: FINALIZATION -->
+            <div id="step-3" class="absolute inset-0 p-6 hidden fade-in flex flex-col h-full">
+                <h2 class="text-2xl font-semibold mb-6 text-white">Finalize & Export</h2>
+                
+                <div class="flex-1 flex gap-6 h-full overflow-hidden">
+                    <!-- Left: Preview & Config -->
+                    <div class="flex-1 flex flex-col gap-6 overflow-y-auto pr-2">
+                        <!-- Preview -->
+                        <div class="bg-black rounded-xl overflow-hidden shadow-lg border border-olive-700 relative aspect-video group">
+                            <img src="https://image.qwenlm.ai/public_source/6b84929e-5848-478e-bbf4-2fb7821f2107/18f06780b-4ce0-4f41-8455-1716100572b8.png" alt="Preview" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity">
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <button class="w-16 h-16 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-blue-600 hover:scale-110 transition-all border border-white/20">
+                                    <i class="fa-solid fa-play text-white text-2xl ml-1"></i>
+                                </button>
+                            </div>
+                            <div class="absolute bottom-4 left-4 bg-black/60 px-3 py-1 rounded text-xs font-mono text-white">
+                                Total Duration: <span id="total-duration">00:00</span>
+                            </div>
+                        </div>
+
+                        <!-- Configs -->
+                        <div class="bg-olive-800 rounded-xl p-5 border border-olive-700 shadow-md">
+                            <h3 class="text-sm font-semibold text-olive-300 mb-4 flex items-center gap-2">
+                                <i class="fa-solid fa-sliders"></i> Output Configuration
+                            </h3>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs text-olive-400 mb-1">Resolution</label>
+                                    <select class="w-full bg-olive-900 border border-olive-600 rounded px-3 py-2 text-sm text-white focus:border-blue-500 outline-none transition-colors">
+                                        <option>1080p (Full HD)</option>
+                                        <option>4K (Ultra HD)</option>
+                                        <option>720p (HD)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-olive-400 mb-1">Format</label>
+                                    <select class="w-full bg-olive-900 border border-olive-600 rounded px-3 py-2 text-sm text-white focus:border-blue-500 outline-none transition-colors">
+                                        <option>MP4 (H.264)</option>
+                                        <option>MOV (ProRes)</option>
+                                        <option>WEBM</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-olive-400 mb-1">Frame Rate</label>
+                                    <select class="w-full bg-olive-900 border border-olive-600 rounded px-3 py-2 text-sm text-white focus:border-blue-500 outline-none transition-colors">
+                                        <option>30 fps</option>
+                                        <option>60 fps</option>
+                                        <option>24 fps (Cinema)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-olive-400 mb-1">Quality</label>
+                                    <select class="w-full bg-olive-900 border border-olive-600 rounded px-3 py-2 text-sm text-white focus:border-blue-500 outline-none transition-colors">
+                                        <option>High</option>
+                                        <option>Medium</option>
+                                        <option>Low (Fast)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Actions -->
+                    <div class="w-80 bg-olive-800 rounded-xl border border-olive-700 p-6 flex flex-col justify-between shadow-md">
+                        <div>
+                            <h3 class="text-lg font-semibold text-white mb-2">Ready to Merge?</h3>
+                            <p class="text-sm text-olive-400 mb-6">
+                                You have <span id="final-count" class="text-white font-bold">0</span> videos queued. 
+                                Estimated output size: <span class="text-white font-bold">~450 MB</span>.
+                            </p>
+                            
+                            <div class="space-y-4">
+                                <div class="flex justify-between text-sm text-olive-300">
+                                    <span>Processing Time</span>
+                                    <span class="font-mono">~2m 15s</span>
+                                </div>
+                                <div class="w-full bg-olive-700 h-1.5 rounded-full overflow-hidden">
+                                    <div class="bg-green-500 h-full w-0" id="process-bar"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-3 mt-8">
+                            <button class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-lg shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-floppy-disk"></i> Save Locally
+                            </button>
+                            <button class="w-full bg-olive-700 hover:bg-olive-600 text-white font-medium py-3 rounded-lg border border-olive-600 transition-all flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-cloud-arrow-up"></i> Upload to Cloud
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer Navigation -->
+        <div class="p-6 border-t border-olive-700 bg-olive-900 flex justify-between items-center z-10 shrink-0">
+            <button id="btn-back" class="px-6 py-2.5 rounded-lg text-olive-300 hover:text-white hover:bg-olive-800 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                Back
+            </button>
+            
+            <button id="btn-next" class="px-8 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-lg shadow-blue-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center gap-2">
+                <span>Proceed</span>
+                <i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // State
+        let currentStep = 1;
+        let videos =[]; // { id, name, size, date, locked }
+        let isMainLocked = false;
+
+        // DOM Elements
+        const btnBack = document.getElementById('btn-back');
+        const btnNext = document.getElementById('btn-next');
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-input');
+        const videoListContainer = document.getElementById('video-list-container');
+        const videoList = document.getElementById('video-list');
+        const arrangeList = document.getElementById('arrange-list');
+        const sortSelect = document.getElementById('sort-select');
+        const dupToggle = document.getElementById('dup-toggle');
+        const mainLockBtn = document.getElementById('main-lock-btn');
+        const finalCount = document.getElementById('final-count');
+        const totalDuration = document.getElementById('total-duration');
+
+        // --- Navigation Logic ---
+
+        function updateUI() {
+            // Hide all steps
+            document.getElementById('step-1').classList.add('hidden');
+            document.getElementById('step-2').classList.add('hidden');
+            document.getElementById('step-3').classList.add('hidden');
+
+            // Show current step
+            const currentStepEl = document.getElementById(`step-${currentStep}`);
+            currentStepEl.classList.remove('hidden');
+            // Re-trigger animation
+            currentStepEl.classList.remove('fade-in');
+            void currentStepEl.offsetWidth; // trigger reflow
+            currentStepEl.classList.add('fade-in');
+
+            // --- Update Stepper UI ---
+            for (let i = 1; i <= 3; i++) {
+                const circle = document.getElementById(`circle-${i}`);
+                if (i < currentStep) {
+                    // Completed Step
+                    circle.className = "w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-sm transition-colors duration-300 shadow-[0_0_10px_rgba(34,197,94,0.5)]";
+                    circle.innerHTML = '<i class="fa-solid fa-check"></i>';
+                } else if (i === currentStep) {
+                    // Active Step
+                    circle.className = "w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm transition-colors duration-300 shadow-[0_0_10px_rgba(37,99,235,0.5)]";
+                    circle.innerHTML = i;
+                } else {
+                    // Pending Step
+                    circle.className = "w-8 h-8 rounded-full bg-olive-700 text-olive-300 flex items-center justify-center font-bold text-sm transition-colors duration-300";
+                    circle.innerHTML = i;
+                }
+            }
+
+            // Update Progress Lines
+            if (currentStep === 1) {
+                document.getElementById('line-1').style.width = '0%';
+                document.getElementById('line-2').style.width = '0%';
+            } else if (currentStep === 2) {
+                document.getElementById('line-1').style.width = '100%';
+                document.getElementById('line-2').style.width = '0%';
+            } else if (currentStep === 3) {
+                document.getElementById('line-1').style.width = '100%';
+                document.getElementById('line-2').style.width = '100%';
+            }
+
+            // --- Update Footer Buttons ---
+            btnBack.disabled = currentStep === 1;
+            
+            if (currentStep === 1) {
+                btnNext.innerHTML = `<span>Proceed</span> <i class="fa-solid fa-arrow-right"></i>`;
+                btnNext.disabled = videos.length === 0;
+            } else if (currentStep === 2) {
+                btnNext.innerHTML = `<span>Finalize</span> <i class="fa-solid fa-check"></i>`;
+                btnNext.disabled = false;
+                renderArrangeList();
+            } else if (currentStep === 3) {
+                btnNext.innerHTML = `<span>Start Merge</span> <i class="fa-solid fa-play"></i>`;
+                btnNext.disabled = false;
+                finalCount.textContent = videos.length;
+                totalDuration.textContent = `00:${videos.length * 15 < 60 ? (videos.length * 15).toString().padStart(2, '0') : '00'}`;
+            }
+        }
+
+        btnBack.addEventListener('click', () => {
+            if (currentStep > 1) {
+                currentStep--;
+                updateUI();
+            }
+        });
+
+        btnNext.addEventListener('click', () => {
+            if (currentStep < 3) {
+                currentStep++;
+                updateUI();
+            } else {
+                alert("Merging started! (Simulation)");
+            }
+        });
+
+        // --- Step 1: Upload Logic ---
+
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dropzone-active');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dropzone-active');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dropzone-active');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+            fileInput.value = ''; // Reset
+        });
+
+        function handleFiles(files) {
+            const newVideos = Array.from(files).map(file => ({
+                id: Date.now() + Math.random(),
+                name: file.name,
+                size: (file.size / (1024*1024)).toFixed(2) + ' MB',
+                date: new Date().toLocaleDateString(),
+                time: new Date().toLocaleTimeString(),
+                locked: false
+            }));
+
+            // Check duplicates if toggle is off
+            if (!dupToggle.checked) {
+                const existingNames = new Set(videos.map(v => v.name));
+                videos = videos.concat(newVideos.filter(v => !existingNames.has(v.name)));
+            } else {
+                videos = videos.concat(newVideos);
+            }
+
+            renderStep1List();
+            updateUI();
+        }
+
+        function removeVideo(id) {
+            videos = videos.filter(v => v.id !== id);
+            renderStep1List();
+            updateUI();
+        }
+
+        function renderStep1List() {
+            if (videos.length > 0) {
+                videoListContainer.classList.remove('hidden');
+                videoList.innerHTML = videos.map(video => `
+                    <div class="flex items-center justify-between bg-olive-800 p-3 rounded-lg border border-olive-700 hover:border-olive-600 transition-colors group">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                            <div class="w-10 h-10 bg-olive-700 rounded flex items-center justify-center flex-shrink-0">
+                                <i class="fa-solid fa-file-video text-blue-400"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-sm font-medium text-white truncate">${video.name}</p>
+                                <p class="text-xs text-olive-400">${video.size}</p>
+                            </div>
+                        </div>
+                        <button onclick="removeVideo(${video.id})" class="w-8 h-8 rounded-full hover:bg-red-500/20 text-olive-400 hover:text-red-400 flex items-center justify-center transition-colors">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                `).join('');
+            } else {
+                videoListContainer.classList.add('hidden');
+            }
+        }
+
+        // --- Step 2: Arrangement Logic ---
+
+        sortSelect.addEventListener('change', (e) => {
+            const type = e.target.value;
+            if (type === 'manual') return;
+
+            videos.sort((a, b) => {
+                if (type === 'name') return a.name.localeCompare(b.name);
+                if (type === 'date') return new Date(a.date) - new Date(b.date);
+                if (type === 'time') return a.time.localeCompare(b.time);
+                return 0;
+            });
+            renderArrangeList();
+        });
+
+        mainLockBtn.addEventListener('click', () => {
+            isMainLocked = !isMainLocked;
+            mainLockBtn.classList.toggle('text-yellow-400', isMainLocked);
+            mainLockBtn.classList.toggle('text-olive-400', !isMainLocked);
+            mainLockBtn.innerHTML = isMainLocked ? '<i class="fa-solid fa-lock"></i>' : '<i class="fa-solid fa-lock-open"></i>';
+            renderArrangeList();
+        });
+
+        function moveVideo(index, direction) {
+            if (isMainLocked) return;
+            if (videos[index].locked) return;
+
+            const newIndex = direction === 'up' ? index - 1 : index + 1;
+            if (newIndex < 0 || newIndex >= videos.length) return;
+
+            // Check if target is locked
+            if (videos[newIndex].locked) return;
+
+            [videos[index], videos[newIndex]] = [videos[newIndex], videos[index]];
+            renderArrangeList();
+        }
+
+        function toggleVideoLock(id) {
+            if (isMainLocked) return;
+            const video = videos.find(v => v.id === id);
+            if (video) {
+                video.locked = !video.locked;
+                renderArrangeList();
+            }
+        }
+
+        function renderArrangeList() {
+            arrangeList.innerHTML = videos.map((video, index) => {
+                const isLocked = isMainLocked || video.locked;
+                const lockIcon = video.locked ? 'fa-lock text-yellow-400' : 'fa-lock-open text-olive-500';
+                
+                return `
+                <div class="grid grid-cols-12 gap-4 items-center bg-olive-800/80 p-3 rounded border border-olive-700/50 hover:bg-olive-700 transition-colors ${isLocked ? 'opacity-75' : ''}">
+                    <div class="col-span-1 text-center font-mono text-olive-400 text-sm">
+                        #${index + 1}
+                    </div>
+                    <div class="col-span-7 flex items-center gap-3 truncate">
+                        <i class="fa-solid fa-file-video text-blue-400/50"></i>
+                        <span class="text-sm text-olive-200 truncate">${video.name}</span>
+                    </div>
+                    <div class="col-span-2 flex justify-center">
+                         <button onclick="toggleVideoLock(${video.id})" class="w-8 h-8 rounded hover:bg-olive-600 flex items-center justify-center transition-colors" title="${video.locked ? 'Unlock' : 'Lock'}">
+                            <i class="fa-solid ${lockIcon}"></i>
+                        </button>
+                    </div>
+                    <div class="col-span-2 flex justify-center gap-2">
+                        <button onclick="moveVideo(${index}, 'up')" ${isLocked || index === 0 ? 'disabled class="text-olive-600 cursor-not-allowed"' : 'class="text-olive-400 hover:text-white"'}>
+                            <i class="fa-solid fa-arrow-up"></i>
+                        </button>
+                        <button onclick="moveVideo(${index}, 'down')" ${isLocked || index === videos.length - 1 ? 'disabled class="text-olive-600 cursor-not-allowed"' : 'class="text-olive-400 hover:text-white"'}>
+                            <i class="fa-solid fa-arrow-down"></i>
+                        </button>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        // Initialize
+        updateUI();
+
+    </script>
+</body>
+</html>
