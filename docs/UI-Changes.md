@@ -150,3 +150,33 @@
 ### Finalization Default Location Carry-Over
 - Fixed Finalization `Save destination` display to reflect the configured default output folder when no manual save path is selected.
 - Merge action now uses the same suggested path shown in the UI, keeping displayed destination and merge output target aligned.
+
+### Real-Time Progress Bar Updates
+- Progress bar now reflects real incremental merge progress instead of a placeholder midpoint value.
+- Status text updates continuously during merge stages using backend processing logs.
+
+### Progress Smoothness Reliability Fix
+- Improved progress responsiveness to avoid perceived `0 -> finished` jumps on some runs.
+- Progress updates now account for multiple progress markers arriving together and render the latest value.
+
+### Header Tagline Cleanup
+- Removed the extra tagline text beside the `VideoMerger` title in the auth and main workflow headers.
+
+### Material Icons Pass (Android/Flet-style)
+- Added Google Material Symbols to the renderer UI.
+- Step 1 file remove action now includes a small cancel icon beside `Remove`.
+- Arrange sequence per-item controls switched to icon buttons:
+  - Lock uses `lock` / `lock_open` states.
+  - Duplicate uses `content_copy`.
+  - Move actions use `arrow_upward` / `arrow_downward`.
+  - Added color-cycling visual variants for lock/duplicate icon buttons.
+- Added Google icons in account-related areas (sign-in actions and account section heading/sign-in state labels).
+- Added YouTube icons in YouTube-related areas (tabs, section headers, YouTube settings switch, upload actions, and channel block).
+
+### Google Icon Visual Refinement
+- Replaced the generic Google material glyph with a proper multicolor Google "G" logo in account/sign-in related UI locations.
+- Updated account tab icon rendering to use the same branded Google logo for visual consistency.
+
+### Preview Player Controls Restored
+- Restored native video controls (play/pause/progress bar) on Arrange and Finalize preview players.
+- Kept restricted options to avoid PiP/download behavior by setting `controlsList="nodownload noplaybackrate"` and `disablePictureInPicture`.

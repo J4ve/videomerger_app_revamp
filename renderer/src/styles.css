@@ -131,6 +131,25 @@ body {
   color: var(--bg-text);
 }
 
+.material-symbols-rounded.vm-icon {
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+  font-size: 1.05rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.icon-inline {
+  margin-right: 6px;
+}
+
+.google-logo-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 /* ─── Scrollbar (Themed) ─── */
 
 * {
@@ -548,6 +567,9 @@ body {
 }
 
 .file-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid rgba(255, 106, 106, 0.45);
   color: var(--danger-text);
   background-color: rgba(255, 106, 106, 0.12);
@@ -637,6 +659,9 @@ body {
 }
 
 .mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background-color: var(--control-bg);
   color: var(--olive-200);
   border: 1px solid var(--olive-600);
@@ -655,6 +680,45 @@ body {
   background-color: rgba(47, 144, 245, 0.2);
   border-color: rgba(47, 144, 245, 0.65);
   color: var(--blue-400);
+}
+
+.mini-btn-icon {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 6px;
+}
+
+.mini-btn-cycle-0 {
+  color: #6cd39f;
+  border-color: rgba(108, 211, 159, 0.5);
+}
+
+.mini-btn-cycle-1 {
+  color: #7dbbff;
+  border-color: rgba(125, 187, 255, 0.5);
+}
+
+.mini-btn-cycle-2 {
+  color: #f2c06c;
+  border-color: rgba(242, 192, 108, 0.5);
+}
+
+.mini-btn-cycle-3 {
+  color: #d59dff;
+  border-color: rgba(213, 157, 255, 0.5);
+}
+
+.mini-btn-cycle-4 {
+  color: #ff9fb1;
+  border-color: rgba(255, 159, 177, 0.5);
+}
+
+.mini-btn-cycle-0:hover:not(:disabled),
+.mini-btn-cycle-1:hover:not(:disabled),
+.mini-btn-cycle-2:hover:not(:disabled),
+.mini-btn-cycle-3:hover:not(:disabled),
+.mini-btn-cycle-4:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 .arrange-layout {
@@ -837,6 +901,8 @@ body {
 }
 
 .config-switch-btn {
+  display: inline-flex;
+  align-items: center;
   border: 1px solid var(--olive-600);
   background: var(--control-bg);
   color: var(--olive-200);
@@ -1102,6 +1168,8 @@ body {
 }
 
 .dash-tab {
+  display: inline-flex;
+  align-items: center;
   text-align: left;
   padding: 10px 14px;
   border: 1px solid transparent;
@@ -1234,6 +1302,9 @@ body {
 /* ─── Buttons ─── */
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 10px;
   padding: 11px 16px;
   border: 1px solid transparent;

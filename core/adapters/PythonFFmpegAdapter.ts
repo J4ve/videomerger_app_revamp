@@ -122,7 +122,8 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
     onStdout?: (data: string) => void,
     onStderr?: (data: string) => void
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    const pythonArgs = [this.config.pythonScriptPath];
+    // -u keeps stdout/stderr unbuffered so progress reaches renderer in real time.
+    const pythonArgs = ['-u', this.config.pythonScriptPath];
     
     if (this.config.ffmpegPath) {
       pythonArgs.push('--ffmpeg-path', this.config.ffmpegPath);

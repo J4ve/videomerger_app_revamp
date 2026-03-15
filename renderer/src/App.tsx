@@ -108,6 +108,33 @@ interface YouTubeRecentVideo {
 
 type AppTheme = 'olive-dark' | 'midnight-blue' | 'sand-light';
 
+const GoogleLogoIcon: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <svg
+    className={`google-logo-icon ${className}`.trim()}
+    viewBox="0 0 24 24"
+    role="img"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path
+      fill="#EA4335"
+      d="M12.24 10.285v3.955h5.495c-.24 1.275-.959 2.356-2.038 3.08l3.295 2.56c1.921-1.77 3.028-4.38 3.028-7.49 0-.713-.064-1.397-.182-2.105H12.24z"
+    />
+    <path
+      fill="#34A853"
+      d="M12 22c2.745 0 5.048-.91 6.73-2.47l-3.295-2.56c-.91.61-2.073.97-3.435.97-2.64 0-4.875-1.78-5.673-4.17H2.93v2.62A10 10 0 0 0 12 22z"
+    />
+    <path
+      fill="#4A90E2"
+      d="M6.327 13.77A6.01 6.01 0 0 1 6 12c0-.615.11-1.21.327-1.77V7.61H2.93A10 10 0 0 0 2 12c0 1.61.386 3.13 1.07 4.39l3.257-2.62z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M12 6.06c1.494 0 2.835.515 3.89 1.53l2.917-2.915C17.042 3.03 14.74 2 12 2A10 10 0 0 0 2.93 7.61l3.397 2.62C7.125 7.84 9.36 6.06 12 6.06z"
+    />
+  </svg>
+);
+
 const App: React.FC = () => {
   // Wizard state
   const [step, setStep] = useState<number>(0); // 0 = auth prompt
@@ -854,7 +881,6 @@ const App: React.FC = () => {
               <img src="/app-icon.svg" alt="Video Merger icon" className="brand-logo" />
               <div>
                 <h1>VideoMerger</h1>
-                <p>Bulk video merging app</p>
               </div>
             </div>
           </header>
@@ -866,7 +892,8 @@ const App: React.FC = () => {
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <button className="btn btn-primary auth-btn" onClick={handleGoogleLogin}>
-                  <span>🔑</span> Sign in with Google
+                  <GoogleLogoIcon className="icon-inline" />
+                  <span>Sign in with Google</span>
                 </button>
                 <button className="btn btn-ghost auth-btn" onClick={handleSkipLogin}>
                   Continue without account
@@ -926,7 +953,6 @@ const App: React.FC = () => {
             <img src="/app-icon.svg" alt="Video Merger icon" className="brand-logo" />
             <div>
               <h1>VideoMerger</h1>
-              <p>Bulk video merging app</p>
             </div>
           </div>
 
@@ -1043,7 +1069,8 @@ const App: React.FC = () => {
                       onClick={handleUploadToYouTube}
                       disabled={isUploading || !ytTitle}
                     >
-                      {isUploading ? 'Uploading...' : '📤 Upload to YouTube'}
+                      <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">smart_display</span>
+                      <span>{isUploading ? 'Uploading...' : 'Upload to YouTube'}</span>
                     </button>
                     {uploadResult && (
                       <div className={uploadResult.success ? 'upload-success' : 'upload-error'}>
@@ -1094,7 +1121,8 @@ const App: React.FC = () => {
                             title="Remove file"
                             disabled={isMerging}
                           >
-                            Remove
+                            <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">cancel</span>
+                            <span>Remove</span>
                           </button>
                         </div>
                       ))
@@ -1150,6 +1178,9 @@ const App: React.FC = () => {
                           <video
                             key={`arrange-${previewVideoSrc}`}
                             className="preview-player"
+                            controls
+                            controlsList="nodownload noplaybackrate"
+                            disablePictureInPicture
                             autoPlay
                             preload="metadata"
                             src={previewVideoSrc}
@@ -1192,7 +1223,7 @@ const App: React.FC = () => {
                           <span className="sequence-meta-chip">{formatDuration(arrangeVideoMeta[selectedFiles[index]]?.duration)}</span>
                           <div className="sequence-actions">
                             <button
-                              className={`mini-btn ${fileLocks[index] ? 'mini-btn-lock-active' : ''}`}
+                              className={`mini-btn mini-btn-icon mini-btn-cycle-${index % 5} ${fileLocks[index] ? 'mini-btn-lock-active' : ''}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleFileLock(index);
@@ -1200,10 +1231,12 @@ const App: React.FC = () => {
                               disabled={!isArrangementLockMode || isMerging}
                               title="Lock position"
                             >
-                              {fileLocks[index] ? 'Locked' : 'Lock'}
+                              <span className="material-symbols-rounded vm-icon" aria-hidden="true">
+                                {fileLocks[index] ? 'lock' : 'lock_open'}
+                              </span>
                             </button>
                             <button
-                              className="mini-btn"
+                              className={`mini-btn mini-btn-icon mini-btn-cycle-${(index + 2) % 5}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDuplicateFile(index);
@@ -1212,27 +1245,29 @@ const App: React.FC = () => {
                               title="Duplicate this video"
                               id={`dup-btn-${index}`}
                             >
-                              Dup
+                              <span className="material-symbols-rounded vm-icon" aria-hidden="true">content_copy</span>
                             </button>
                             <button
-                              className="mini-btn"
+                              className="mini-btn mini-btn-icon"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleMoveFileUp(index);
                               }}
                               disabled={index === 0 || isMerging || (isArrangementLockMode && (fileLocks[index] || fileLocks[index - 1]))}
+                              title="Move up"
                             >
-                              Up
+                              <span className="material-symbols-rounded vm-icon" aria-hidden="true">arrow_upward</span>
                             </button>
                             <button
-                              className="mini-btn"
+                              className="mini-btn mini-btn-icon"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleMoveFileDown(index);
                               }}
                               disabled={index === selectedFiles.length - 1 || isMerging || (isArrangementLockMode && (fileLocks[index] || fileLocks[index + 1]))}
+                              title="Move down"
                             >
-                              Down
+                              <span className="material-symbols-rounded vm-icon" aria-hidden="true">arrow_downward</span>
                             </button>
                             <button
                               className="file-remove"
@@ -1268,6 +1303,9 @@ const App: React.FC = () => {
                             <video
                               key={previewVideoSrc}
                               className="preview-player"
+                              controls
+                              controlsList="nodownload noplaybackrate"
+                              disablePictureInPicture
                               autoPlay
                               preload="metadata"
                               src={previewVideoSrc}
@@ -1315,7 +1353,8 @@ const App: React.FC = () => {
                               onClick={() => setFinalizeConfigView('youtube')}
                               type="button"
                             >
-                              YouTube Settings
+                              <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">smart_display</span>
+                              <span>YouTube Settings</span>
                             </button>
                           )}
                         </div>
@@ -1330,6 +1369,7 @@ const App: React.FC = () => {
                         </div>
                         {isLoggedIn && (
                           <p style={{ margin: '10px 0 0', color: 'var(--olive-200)' }}>
+                            <GoogleLogoIcon className="icon-inline" />
                             Signed in as {googleUser?.name || googleUser?.email || 'Google User'}
                           </p>
                         )}
@@ -1360,7 +1400,10 @@ const App: React.FC = () => {
 
                       {isLoggedIn && finalizeConfigView === 'youtube' && (
                         <div className="preview-block">
-                          <h3>YouTube quick setup</h3>
+                          <h3>
+                            <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">smart_display</span>
+                            YouTube quick setup
+                          </h3>
                           <div className="yt-config yt-config-compact">
                             <div className="yt-inline-row">
                               <label>
@@ -1712,9 +1755,9 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
   const tabs = [
     { id: 'general', label: 'General' },
-    { id: 'youtube', label: 'YouTube' },
+    { id: 'youtube', label: 'YouTube', icon: 'smart_display' },
     { id: 'ffmpeg', label: 'FFmpeg' },
-    { id: 'account', label: 'Account' },
+    { id: 'account', label: 'Account', icon: 'google_logo' },
   ];
 
   return (
@@ -1726,6 +1769,11 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
             className={`dash-tab ${activeTab === tab.id ? 'dash-tab-active' : ''}`}
             onClick={() => setActiveTab(tab.id)}
           >
+            {tab.icon === 'google_logo' ? (
+              <GoogleLogoIcon className="icon-inline" />
+            ) : tab.icon ? (
+              <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">{tab.icon}</span>
+            ) : null}
             {tab.label}
           </button>
         ))}
@@ -1778,7 +1826,10 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
         {activeTab === 'youtube' && (
           <div className="dash-section">
-            <h3>YouTube Defaults</h3>
+            <h3>
+              <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">smart_display</span>
+              YouTube Defaults
+            </h3>
             {!isLoggedIn ? (
               <div className="empty-state">Sign in with Google to configure YouTube settings.</div>
             ) : (
@@ -1885,7 +1936,10 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
         {activeTab === 'account' && (
           <div className="dash-section">
-            <h3>Google Account</h3>
+            <h3>
+              <GoogleLogoIcon className="icon-inline" />
+              Google Account
+            </h3>
             {isLoggedIn ? (
               <div>
                 <div className="account-card">
@@ -1902,13 +1956,17 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
                 <div className="account-youtube-block">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                    <h4 style={{ margin: 0 }}>YouTube Channel</h4>
+                    <h4 style={{ margin: 0 }}>
+                      <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">smart_display</span>
+                      YouTube Channel
+                    </h4>
                     {ytChannel?.url && (
                       <button
                         className="btn btn-ghost"
                         type="button"
                         onClick={() => window.electronAPI.openExternal(ytChannel.url)}
                       >
+                        <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">open_in_new</span>
                         Open Channel
                       </button>
                     )}
@@ -1970,7 +2028,8 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
               <div>
                 <p className="panel-subtitle">Not signed in. YouTube features are disabled.</p>
                 <button className="btn btn-primary" onClick={onLogin}>
-                  🔑 Sign in with Google
+                  <GoogleLogoIcon className="icon-inline" />
+                  <span>Sign in with Google</span>
                 </button>
               </div>
             )}

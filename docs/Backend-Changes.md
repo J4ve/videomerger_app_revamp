@@ -47,3 +47,13 @@
 - Scope: Ensure configured default output location appears in Finalization before manual save selection.
 - Backend impact: None.
 - Reason: Fix is renderer-side state/display alignment using existing default-output settings and merge path logic.
+
+### Real-Time Merge Progress Emission
+- Scope: Make renderer progress bar move in real time during merge.
+- Backend impact: Updated processing event parser in `VideoProcessingService` to consume Python CLI `PROGRESS: <n>` lines and emit true percentage updates.
+- Added monotonic progress clamping (0..100) and forwarded INFO status lines as live progress messages.
+
+### Progress Streaming Robustness
+- Added unbuffered Python execution (`python -u`) in adapter to flush progress logs immediately.
+- Updated service parser to handle multiple `PROGRESS:` tokens in a single stream chunk and emit the highest observed value.
+- Result: reduced chunking/buffering artifacts that made progress appear to jump directly from 0 to completion.
