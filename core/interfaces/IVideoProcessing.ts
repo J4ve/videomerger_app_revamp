@@ -250,6 +250,7 @@ export interface IAppConfig {
   supportedFormats: string[];
   tempDir?: string;
   maxFileSizeMb?: number;
+  ffmpegPath?: string;
 }
 
 /**

@@ -5,7 +5,7 @@ import * as https from 'https';
 import * as http from 'http';
 import * as url from 'url';
 import { execFile, execSync } from 'child_process';
-import Store = require('electron-store');
+import Store from 'electron-store';
 import { container } from '../core/container';
 import { PythonFFmpegAdapter } from '../core/adapters/PythonFFmpegAdapter';
 import { NodeProcessSpawner } from '../core/adapters/NodeProcessSpawner';
