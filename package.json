@@ -1,6 +1,6 @@
 {
   "name": "videomerger-desktop",
-  "version": "2.0",
+  "version": "2.0.0",
   "description": "Desktop application for merging multiple videos using Electron + React + Python",
   "main": "dist/main/main.js",
   "scripts": {
