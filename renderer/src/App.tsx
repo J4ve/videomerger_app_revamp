@@ -1741,13 +1741,17 @@ const App: React.FC = () => {
                     <div className="finalize-right">
                       <div className="preview-block">
                         <div className="config-switcher">
-                          <button
-                            className={`config-switch-btn ${finalizeConfigView === 'merge' ? 'config-switch-btn-active' : ''}`}
-                            onClick={() => setFinalizeConfigView('merge')}
-                            type="button"
-                          >
-                            Merge Settings
-                          </button>
+                          {isLoggedIn ? (
+                            <button
+                              className={`config-switch-btn ${finalizeConfigView === 'merge' ? 'config-switch-btn-active' : ''}`}
+                              onClick={() => setFinalizeConfigView('merge')}
+                              type="button"
+                            >
+                              Merge Settings
+                            </button>
+                          ) : (
+                            <span className="config-switch-text">Merge Settings</span>
+                          )}
                           {isLoggedIn && (
                             <button
                               className={`config-switch-btn ${finalizeConfigView === 'youtube' ? 'config-switch-btn-active' : ''}`}

@@ -1002,6 +1002,15 @@ body {
   flex-wrap: wrap;
 }
 
+.config-switch-text {
+  display: inline-flex;
+  align-items: center;
+  color: var(--olive-300);
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 8px 2px;
+}
+
 .config-switch-btn {
   display: inline-flex;
   align-items: center;
