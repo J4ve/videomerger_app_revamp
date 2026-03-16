@@ -18,8 +18,11 @@ A professional desktop solution for merging multiple video files with ease. Feat
 ## ✨ Features
 
 - 🎬 **Multiple Video Support**: Merge 2 or more videos seamlessly.
-- 📦 **Cross-Platform Formats**: Support for `MP4`, `AVI`, `MOV`, `MKV`, and `WEBM`.
+- 📦 **Broad Format Support**: `MP4`, `MOV`, `AVI`, `MKV`, `WEBM`, `M4V`, `MPG`, `MPEG`, `TS`, `M2TS`, `FLV`, `WMV`, `3GP`, `OGV`, `VOB`, `MXF`.
 - 🖥️ **Native Desktop Experience**: Built with Electron + React + Vite for a premium look and feel.
+- 🧭 **3-Step Guided Workflow**: Add videos → arrange sequence → finalize & merge.
+- ⚙️ **Advanced Merge Controls**: Optional standardization controls (including vertical/phone and custom options) under a warning-gated advanced section.
+- 🛑 **Merge Cancellation**: Active merge can be canceled from the UI with confirmation.
 - 🏗️ **Clean Architecture**: A framework-agnostic core with industry-standard design patterns (DI, Repository, Command, Strategy, Observer, and Adapter).
 - 🧪 **Reliable & Tested**: Comprehensive unit and integration tests using Vitest and Pytest.
 - 🔒 **Secure**: Robust file validation and sanitization.
@@ -53,7 +56,7 @@ A professional desktop solution for merging multiple video files with ease. Feat
 
 4. **Build & Package (Production)**
    ```bash
-   npm run dist        # Native build
+  npm run package     # Build and package Windows installer
    # OR use Docker for a clean environment-free build:
    docker compose run builder
    ```
@@ -236,6 +239,7 @@ videomerger_app_revamp/
 ### Desktop Application Tests
 ```bash
 npm test          # Run Vitest suite
+npm run test:core # Run core/main Vitest suite
 npm test -- --watch  # Continuous testing
 ```
 
