@@ -1127,8 +1127,7 @@ const App: React.FC = () => {
     try {
       const result = await window.electronAPI.cancelMerge();
       if (!result?.success) {
-        setIsCancellingMerge(false);
-        setStatus('Unable to cancel merge.');
+        setStatus('Cancel requested...');
       }
     } catch {
       setIsCancellingMerge(false);

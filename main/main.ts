@@ -616,6 +616,7 @@ function setupIPC(): void {
   const observer = new IPCProcessingObserver();
   const service = container.resolve<IVideoProcessingService>('VideoProcessingService');
   service.subscribe(observer);
+  let mergeInProgress = false;
 
   ipcMain.handle('select-video-files', async () => {
     const config = getAppConfig();
@@ -692,13 +693,18 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('merge-videos', async (event, options: IVideoMergeOptions) => {
-    return await service.mergeVideos(options);
+    mergeInProgress = true;
+    try {
+      return await service.mergeVideos(options);
+    } finally {
+      mergeInProgress = false;
+    }
   });
 
   ipcMain.handle('cancel-merge', async () => {
     const spawner = container.resolve<NodeProcessSpawner>('ProcessSpawner');
     const canceled = spawner.cancelRunningProcess();
-    return { success: canceled };
+    return { success: canceled || mergeInProgress };
   });
 
   ipcMain.handle('check-ffmpeg', async () => {

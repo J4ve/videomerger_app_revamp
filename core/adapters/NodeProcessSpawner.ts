@@ -7,21 +7,27 @@ import { spawn, ChildProcess } from 'child_process';
  */
 export class NodeProcessSpawner implements IProcessSpawner {
   private static readonly MAX_CAPTURE_BYTES = 1_000_000;
-  private activeProcess: ChildProcess | null = null;
-  private cancellationRequested = false;
+  private static activeProcess: ChildProcess | null = null;
+  private static cancellationRequested = false;
 
   cancelRunningProcess(): boolean {
-    if (!this.activeProcess || this.activeProcess.killed) {
+    const active = NodeProcessSpawner.activeProcess;
+    if (!active || active.killed) {
       return false;
     }
 
-    this.cancellationRequested = true;
+    NodeProcessSpawner.cancellationRequested = true;
 
     try {
-      this.activeProcess.kill('SIGTERM');
+      active.kill('SIGTERM');
       return true;
     } catch {
-      return false;
+      try {
+        active.kill();
+        return true;
+      } catch {
+        return false;
+      }
     }
   }
 
@@ -41,8 +47,8 @@ export class NodeProcessSpawner implements IProcessSpawner {
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve, reject) => {
       const process = spawn(command, args);
-      this.activeProcess = process;
-      this.cancellationRequested = false;
+      NodeProcessSpawner.activeProcess = process;
+      NodeProcessSpawner.cancellationRequested = false;
 
       let stdout = '';
       let stderr = '';
@@ -66,14 +72,16 @@ export class NodeProcessSpawner implements IProcessSpawner {
       });
 
       process.on('close', (code, signal) => {
-        const wasCancelled = this.cancellationRequested;
+        const wasCancelled = NodeProcessSpawner.cancellationRequested;
         const exitCode = typeof code === 'number' ? code : (signal ? 1 : 0);
         if (wasCancelled && !stderr.includes('Merge cancelled by user.')) {
           stderr = `${stderr ? `${stderr}\n` : ''}Merge cancelled by user.`;
         }
 
-        this.activeProcess = null;
-        this.cancellationRequested = false;
+        if (NodeProcessSpawner.activeProcess === process) {
+          NodeProcessSpawner.activeProcess = null;
+        }
+        NodeProcessSpawner.cancellationRequested = false;
 
         resolve({
           stdout,
@@ -83,8 +91,10 @@ export class NodeProcessSpawner implements IProcessSpawner {
       });
 
       process.on('error', (error) => {
-        this.activeProcess = null;
-        this.cancellationRequested = false;
+        if (NodeProcessSpawner.activeProcess === process) {
+          NodeProcessSpawner.activeProcess = null;
+        }
+        NodeProcessSpawner.cancellationRequested = false;
         reject(error);
       });
     });
