@@ -93,7 +93,7 @@ describe('App', () => {
       await skipAuth();
       const dashBtn = document.getElementById('dashboard-btn');
       fireEvent.click(dashBtn!);
-      await waitFor(() => expect(screen.getByText('Merge')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
 
       fireEvent.click(screen.getByText('Info'));
       await waitFor(() => expect(screen.getByText('App Info')).toBeInTheDocument());
@@ -164,7 +164,7 @@ describe('App', () => {
       await skipAuth();
       const dashBtn = document.getElementById('dashboard-btn');
       fireEvent.click(dashBtn!);
-      await waitFor(() => expect(screen.getByText('Merge')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument());
       await waitFor(() => expect(screen.getByText('YouTube Defaults')).toBeInTheDocument());
       
       fireEvent.click(screen.getByText('Account'));

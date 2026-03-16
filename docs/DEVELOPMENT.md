@@ -460,7 +460,7 @@ After a successful merge, logged-in users see a YouTube upload form:
 ### Dashboard & Settings
 
 Accessible via ⚙ button in the header. Tabs:
-- **Merge**: General settings + YouTube defaults in one tab; includes a Google sign-in button when logged out
+- **Settings**: General settings + YouTube defaults in one tab; includes a Google sign-in button when logged out
 - **Account**: Google account info, sign out
 - **Info**: FFmpeg version and app developer credits
 

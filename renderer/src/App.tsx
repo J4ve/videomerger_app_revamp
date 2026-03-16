@@ -1810,16 +1810,18 @@ const App: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="progress-card">
-                        <div className="progress-meta">
-                          <span>Progress</span>
-                          <span>{Math.round(progress)}%</span>
+                      {(isMerging || progress > 0) && (
+                        <div className="progress-card">
+                          <div className="progress-meta">
+                            <span>Progress</span>
+                            <span>{Math.round(progress)}%</span>
+                          </div>
+                          <div className="progress-track">
+                            <div className="progress-fill" style={{ width: `${Math.min(progress, 100)}%` }} />
+                          </div>
+                          <p className="status-line">{status}</p>
                         </div>
-                        <div className="progress-track">
-                          <div className="progress-fill" style={{ width: `${Math.min(progress, 100)}%` }} />
-                        </div>
-                        <p className="status-line">{status}</p>
-                      </div>
+                      )}
 
                       {isLoggedIn && finalizeConfigView === 'youtube' && (
                         <div className="preview-block">
@@ -2387,7 +2389,7 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
   };
 
   const tabs = [
-    { id: 'merge', label: 'Merge' },
+    { id: 'merge', label: 'Settings', icon: 'settings' },
     { id: 'account', label: 'Account', icon: 'google_logo' },
     { id: 'info', label: 'Info', icon: 'info' },
   ];
@@ -2416,7 +2418,10 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
       <div className="dashboard-content">
         {activeTab === 'merge' && (
           <div className="dash-section">
-            <h3>General Settings</h3>
+            <h3>
+              <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">settings</span>
+              General Settings
+            </h3>
             <label className="std-label">
               Theme
               <select
@@ -2483,11 +2488,9 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
         )}
 
         {activeTab === 'merge' && (
-          <div className="dash-section">
-            <h3>
-              <img src="https://img.icons8.com/color/48/youtube-play.png" className="icon-inline" style={{ width: 22, height: 22, objectFit: 'contain', marginRight: 8 }} alt="" />
-              YouTube Defaults
-            </h3>
+          <div className="dash-section" style={{ marginTop: 16 }}>
+            <div style={{ borderTop: '1px solid var(--olive-700)', marginBottom: 14 }} />
+            <h3>YouTube Defaults</h3>
             {!isLoggedIn ? (
               <div>
                 <div className="empty-state">Sign in with Google to configure YouTube settings.</div>
@@ -2664,10 +2667,12 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
                   <div className="yt-preset-actions" style={{ marginTop: 6 }}>
                     <button className="btn btn-secondary" type="button" onClick={handleSaveOnlineYtPresets} disabled={ytOnlineSyncBusy}>
-                      Save Online Presets
+                      <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">cloud_upload</span>
+                      Save presets to Cloud
                     </button>
                     <button className="btn btn-ghost" type="button" onClick={handleLoadOnlineYtPresets} disabled={ytOnlineSyncBusy}>
-                      Load Online Presets
+                      <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">cloud_download</span>
+                      Import presets from Cloud
                     </button>
                   </div>
                   {ytOnlineSyncStatus && (
