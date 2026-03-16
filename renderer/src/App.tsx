@@ -1751,7 +1751,8 @@ const App: React.FC = () => {
                               onClick={() => setFinalizeConfigView('merge')}
                               type="button"
                             >
-                              Merge Settings
+                              <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">settings</span>
+                              <span>Merge Settings</span>
                             </button>
                           ) : (
                             <span className="config-switch-text">Merge Settings</span>
