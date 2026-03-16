@@ -12,7 +12,7 @@
     "build:main": "tsc -p tsconfig.main.json",
     "preview": "vite preview",
     "start": "npm run build && electron .",
-    "prepackage": "node -e \"const fs=require('fs'); if(!fs.existsSync('resources'))fs.mkdirSync('resources',{recursive:true}); fs.copyFileSync('src/videomerger/video_processor_cli.py', 'resources/video_processor_cli.py')\"",
+    "prepackage": "node -e \"const fs=require('fs');const path=require('path');if(!fs.existsSync('resources'))fs.mkdirSync('resources',{recursive:true});fs.copyFileSync('src/videomerger/video_processor_cli.py','resources/video_processor_cli.py');const runtimeConfigDir=path.join('resources','runtime-config');if(!fs.existsSync(runtimeConfigDir))fs.mkdirSync(runtimeConfigDir,{recursive:true});for(const fileName of ['.env','.env.local']){if(fs.existsSync(fileName)){fs.copyFileSync(fileName,path.join(runtimeConfigDir,fileName));}}\"",
     "package": "npm run build && npm run prepackage && electron-builder --win",
     "test": "vitest",
     "test:core": "vitest --config vitest.core.config.ts",

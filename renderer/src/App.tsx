@@ -301,6 +301,9 @@ const App: React.FC = () => {
   const [ytLicense, setYtLicense] = useState<'youtube' | 'creativeCommon'>('youtube');
   const [ytEmbeddable, setYtEmbeddable] = useState<boolean>(true);
   const [ytPublicStatsViewable, setYtPublicStatsViewable] = useState<boolean>(true);
+  const [postMergeYtTitle, setPostMergeYtTitle] = useState<string>('');
+  const [postMergeYtDescription, setPostMergeYtDescription] = useState<string>('');
+  const [postMergeYtPrivacy, setPostMergeYtPrivacy] = useState<string>('private');
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadResult, setUploadResult] = useState<any>(null);
   const [finalizeConfigView, setFinalizeConfigView] = useState<'merge' | 'youtube'>('merge');
@@ -422,6 +425,16 @@ const App: React.FC = () => {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', appTheme);
   }, [appTheme]);
+
+  useEffect(() => {
+    if (!mergeComplete) {
+      return;
+    }
+
+    setPostMergeYtTitle(ytTitle);
+    setPostMergeYtDescription(ytDescription);
+    setPostMergeYtPrivacy(ytPrivacy);
+  }, [mergeComplete]);
 
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -1142,17 +1155,25 @@ const App: React.FC = () => {
   };
 
   const handleUploadToYouTube = async () => {
-    if (!outputPath || !ytTitle) {
+    const effectiveTitle = (mergeComplete ? postMergeYtTitle : ytTitle).trim();
+    const effectiveDescription = mergeComplete ? postMergeYtDescription : ytDescription;
+    const effectivePrivacy = mergeComplete ? postMergeYtPrivacy : ytPrivacy;
+
+    if (!outputPath || !effectiveTitle) {
       setStatus('Please provide a title for the YouTube upload.');
       return;
     }
+
+    setYtTitle(effectiveTitle);
+    setYtDescription(effectiveDescription);
+    setYtPrivacy(effectivePrivacy);
     setIsUploading(true);
     setStatus('Uploading to YouTube...');
     const result = await window.electronAPI.uploadToYouTube({
       filePath: outputPath,
-      title: ytTitle,
-      description: ytDescription,
-      privacy: ytPrivacy,
+      title: effectiveTitle,
+      description: effectiveDescription,
+      privacy: effectivePrivacy,
       categoryId: ytCategoryId || undefined,
       tags: ytTags
         .split(',')
@@ -1270,6 +1291,9 @@ const App: React.FC = () => {
     setYtLicense('youtube');
     setYtEmbeddable(true);
     setYtPublicStatsViewable(true);
+    setPostMergeYtTitle('');
+    setPostMergeYtDescription('');
+    setPostMergeYtPrivacy('private');
     setUploadResult(null);
     setStandardization({ resolution: 'original', fps: 'original' });
     setFileLocks([]);
@@ -1494,17 +1518,17 @@ const App: React.FC = () => {
                   <div className="yt-config">
                     <label>
                       Title *
-                      <input type="text" value={ytTitle} onChange={e => setYtTitle(e.target.value)}
+                      <input type="text" value={postMergeYtTitle} onChange={e => setPostMergeYtTitle(e.target.value)}
                         placeholder="Enter video title" className="yt-input" />
                     </label>
                     <label>
                       Description
-                      <textarea value={ytDescription} onChange={e => setYtDescription(e.target.value)}
+                      <textarea value={postMergeYtDescription} onChange={e => setPostMergeYtDescription(e.target.value)}
                         placeholder="Enter description" className="yt-input" rows={3} />
                     </label>
                     <label>
                       Privacy
-                      <select value={ytPrivacy} onChange={e => setYtPrivacy(e.target.value)} className="std-select">
+                      <select value={postMergeYtPrivacy} onChange={e => setPostMergeYtPrivacy(e.target.value)} className="std-select">
                         <option value="private">Private</option>
                         <option value="unlisted">Unlisted</option>
                         <option value="public">Public</option>
@@ -1513,7 +1537,7 @@ const App: React.FC = () => {
                     <button
                       className="btn btn-primary"
                       onClick={handleUploadToYouTube}
-                      disabled={isUploading || !ytTitle}
+                      disabled={isUploading || !postMergeYtTitle.trim()}
                     >
                       <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">smart_display</span>
                       <span>{isUploading ? 'Uploading...' : 'Upload to YouTube'}</span>

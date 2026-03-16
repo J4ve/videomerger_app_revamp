@@ -457,6 +457,7 @@ After a successful merge, logged-in users see a YouTube upload form:
 - If you downloaded a Google OAuth client JSON file, you can set `GOOGLE_OAUTH_CLIENT_JSON_FILE` to its path instead of manually copying client id/secret.
 - Add this to `.env` (example): `GOOGLE_OAUTH_CLIENT_JSON_FILE=C:/Users/your-user/Downloads/client_secret_xxx.apps.googleusercontent.com.json`
 - In Google Cloud Console, ensure the OAuth client has `http://localhost:8976/oauth2callback` in Authorized redirect URIs (your current JSON shows only `http://localhost`).
+- Packaged installers now include optional `.env` and `.env.local` files (if present during `npm run package` / Docker builder run) in `resources/runtime-config`; OAuth config is resolved from packaged runtime paths as well as current working directory.
  - The sign-in button advances the wizard only after a successful Google OAuth login; failed or canceled logins leave you on the current screen with an error status.
 - Debug tracing for login clicks and OAuth flow is available in devtools/terminal logs with `[Auth][Renderer]` and `[Auth][Main]` prefixes.
 
