@@ -479,7 +479,7 @@ body {
 }
 
 .step-line {
-  width: 60px;
+  width: 96px;
   height: 4px;
   border-radius: 12px;
   background-color: var(--olive-700);

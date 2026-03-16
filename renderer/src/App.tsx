@@ -1791,7 +1791,7 @@ const App: React.FC = () => {
                         </details>
 
                         {isLoggedIn && (
-                          <p style={{ margin: '10px 0 0', color: 'var(--olive-200)' }}>
+                          <p style={{ margin: '10px 0 0', color: 'var(--olive-300)', fontSize: '0.82rem' }}>
                             <GoogleLogoIcon className="icon-inline" />
                             Signed in as {googleUser?.name || googleUser?.email || 'Google User'}
                           </p>

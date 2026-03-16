@@ -312,6 +312,8 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 1080,
+    minHeight: 720,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: 'rgba(0, 0, 0, 0)',

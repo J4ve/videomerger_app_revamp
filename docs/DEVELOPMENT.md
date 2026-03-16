@@ -464,6 +464,11 @@ Accessible via ⚙ button in the header. Tabs:
 - **Account**: Google account info, sign out
 - **Info**: FFmpeg version and app developer credits
 
+UI guardrails and polish:
+- Main app window has a minimum size of **1080 × 720** to prevent layout breakage on very small windows.
+- Finalize step keeps the “Signed in as …” helper text subtle (smaller + muted gray tone).
+- Wizard stepper connector lines are extended for clearer 1 → 2 → 3 progression.
+
 Output name templates support these tokens:
 - `{date}` (YYYY-MM-DD)
 - `{time}` (HH-MM-SS)
