@@ -85,15 +85,23 @@ describe('App', () => {
     });
   });
 
-  // ─── FFmpeg Indicator ───
+  // ─── Info Tab ───
 
-  describe('FFmpeg Indicator', () => {
-    it('displays FFmpeg status in header chip', async () => {
+  describe('Info Tab', () => {
+    it('shows FFmpeg details and developer names in Settings > Info', async () => {
       render(<App />);
       await skipAuth();
-      await waitFor(() => {
-        expect(screen.getByText('Installed')).toBeInTheDocument();
-      });
+      const dashBtn = document.getElementById('dashboard-btn');
+      fireEvent.click(dashBtn!);
+      await waitFor(() => expect(screen.getByText('Merge')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Info'));
+      await waitFor(() => expect(screen.getByText('App Info')).toBeInTheDocument());
+      expect(screen.getByText('FFmpeg')).toBeInTheDocument();
+      expect(screen.getByText(/Version:/)).toBeInTheDocument();
+      expect(screen.getByText('Jave Bacsain')).toBeInTheDocument();
+      expect(screen.getByText('Carl Gerald Parro')).toBeInTheDocument();
+      expect(screen.getByText('Marc Justin Prestado')).toBeInTheDocument();
     });
   });
 
@@ -156,16 +164,18 @@ describe('App', () => {
       await skipAuth();
       const dashBtn = document.getElementById('dashboard-btn');
       fireEvent.click(dashBtn!);
-      await waitFor(() => expect(screen.getByText('General')).toBeInTheDocument());
-
-      fireEvent.click(screen.getByText('YouTube'));
+      await waitFor(() => expect(screen.getByText('Merge')).toBeInTheDocument());
       await waitFor(() => expect(screen.getByText('YouTube Defaults')).toBeInTheDocument());
-      
-      fireEvent.click(screen.getByText('FFmpeg'));
-      await waitFor(() => expect(screen.getByText('FFmpeg Configuration')).toBeInTheDocument());
       
       fireEvent.click(screen.getByText('Account'));
       await waitFor(() => expect(screen.getByText('Google Account')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Info'));
+      await waitFor(() => expect(screen.getByText('App Info')).toBeInTheDocument());
+      expect(screen.getByText(/Version:/)).toBeInTheDocument();
+      expect(screen.getByText('Jave Bacsain')).toBeInTheDocument();
+      expect(screen.getByText('Carl Gerald Parro')).toBeInTheDocument();
+      expect(screen.getByText('Marc Justin Prestado')).toBeInTheDocument();
     });
   });
 

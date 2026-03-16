@@ -460,11 +460,9 @@ After a successful merge, logged-in users see a YouTube upload form:
 ### Dashboard & Settings
 
 Accessible via ⚙ button in the header. Tabs:
-- **General**: Max file size, default resolution/FPS, default save folder, and output name template
-- **Presets**: Save/load standardization presets
-- **YouTube**: Default title, description, privacy (requires login)
-- **FFmpeg**: Status, version, path display
+- **Merge**: General settings + YouTube defaults in one tab; includes a Google sign-in button when logged out
 - **Account**: Google account info, sign out
+- **Info**: FFmpeg version and app developer credits
 
 Output name templates support these tokens:
 - `{date}` (YYYY-MM-DD)

@@ -267,7 +267,6 @@ const App: React.FC = () => {
   const [ffmpegDetails, setFFmpegDetails] = useState<{
     available: boolean; version: string; path: string; isBundled: boolean;
   } | null>(null);
-  const [showFFmpegDialog, setShowFFmpegDialog] = useState<boolean>(false);
 
   // Drag-and-drop state
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
@@ -323,7 +322,7 @@ const App: React.FC = () => {
 
   // Dashboard state
   const [showDashboard, setShowDashboard] = useState<boolean>(false);
-  const [dashboardInitialTab, setDashboardInitialTab] = useState<'general' | 'youtube' | 'ffmpeg' | 'account'>('general');
+  const [dashboardInitialTab, setDashboardInitialTab] = useState<'merge' | 'account' | 'info'>('merge');
 
   const syncFinalizeYouTubeFromSettings = useCallback((payload: {
     defaults: Record<string, any>;
@@ -1388,19 +1387,9 @@ const App: React.FC = () => {
 
           <div className="header-actions">
             <button
-              className="status-chip"
-              onClick={() => setShowFFmpegDialog(true)}
-              title="Click for FFmpeg details"
-              id="ffmpeg-status-chip"
-            >
-              <span className={`status-dot ${ffmpegStatus === 'Installed' ? 'status-dot-ok' : 'status-dot-err'}`} />
-              <span className="status-chip-label">FFmpeg</span>
-              <span>{ffmpegStatus}</span>
-            </button>
-            <button
               className="header-icon-btn"
               onClick={() => {
-                setDashboardInitialTab('general');
+                setDashboardInitialTab('merge');
                 setShowDashboard(true);
               }}
               title="Dashboard & Settings"
@@ -1434,30 +1423,6 @@ const App: React.FC = () => {
             <div className={getStepCircleClass(3)}>3</div>
           </div>
         </div>
-
-        {/* FFmpeg Details Dialog */}
-        {showFFmpegDialog && (
-          <div className="dialog-overlay" onClick={() => setShowFFmpegDialog(false)}>
-            <div className="ffmpeg-dialog panel fade-in" onClick={e => e.stopPropagation()}>
-              <h2>FFmpeg Details</h2>
-              <div className="ffmpeg-detail-grid">
-                <span className="detail-label">Status</span>
-                <span className={ffmpegDetails?.available ? 'detail-val-ok' : 'detail-val-err'}>
-                  {ffmpegDetails?.available ? '✅ Installed' : '❌ Not Installed'}
-                </span>
-                <span className="detail-label">Version</span>
-                <span>{ffmpegDetails?.version || 'Unknown'}</span>
-                <span className="detail-label">Path</span>
-                <span style={{ wordBreak: 'break-all' }}>{ffmpegDetails?.path || 'N/A'}</span>
-                <span className="detail-label">Source</span>
-                <span>{ffmpegDetails?.isBundled ? 'Bundled with app' : 'System PATH'}</span>
-              </div>
-              <button className="btn btn-secondary" style={{ marginTop: 16, width: '100%' }} onClick={() => setShowFFmpegDialog(false)}>
-                Close
-              </button>
-            </div>
-          </div>
-        )}
 
         <main className="wizard-main">
           {mergeComplete ? (
@@ -2061,7 +2026,7 @@ interface DashboardPanelProps {
   googleUser: GoogleUser | null;
   ffmpegDetails: any;
   standardization: { resolution: string; fps: string };
-  initialTab: 'general' | 'youtube' | 'ffmpeg' | 'account';
+  initialTab: 'merge' | 'account' | 'info';
   appTheme: AppTheme;
   defaultOutputDir: string;
   outputNameTemplate: string;
@@ -2422,10 +2387,9 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
   };
 
   const tabs = [
-    { id: 'general', label: 'General' },
-    { id: 'youtube', label: 'YouTube', iconUrl: 'https://img.icons8.com/color/48/youtube-play.png' },
-    { id: 'ffmpeg', label: 'FFmpeg', iconUrl: 'https://img.icons8.com/color/48/ffmpeg.png' },
+    { id: 'merge', label: 'Merge' },
     { id: 'account', label: 'Account', icon: 'google_logo' },
+    { id: 'info', label: 'Info', icon: 'info' },
   ];
 
   return (
@@ -2450,7 +2414,7 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
       </div>
 
       <div className="dashboard-content">
-        {activeTab === 'general' && (
+        {activeTab === 'merge' && (
           <div className="dash-section">
             <h3>General Settings</h3>
             <label className="std-label">
@@ -2491,6 +2455,15 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
               <small style={{ color: 'var(--olive-300)' }}>
                 Tokens: {'{date}'}, {'{time}'}, {'{timestamp}'}
               </small>
+              <div style={{ marginTop: 8 }}>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => setSettings((prev: any) => ({ ...prev, outputNameTemplate: DEFAULT_OUTPUT_NAME_TEMPLATE }))}
+                >
+                  Reset Template
+                </button>
+              </div>
             </label>
 
             <div className="preview-block" style={{ padding: 12 }}>
@@ -2509,14 +2482,20 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
           </div>
         )}
 
-        {activeTab === 'youtube' && (
+        {activeTab === 'merge' && (
           <div className="dash-section">
             <h3>
               <img src="https://img.icons8.com/color/48/youtube-play.png" className="icon-inline" style={{ width: 22, height: 22, objectFit: 'contain', marginRight: 8 }} alt="" />
               YouTube Defaults
             </h3>
             {!isLoggedIn ? (
-              <div className="empty-state">Sign in with Google to configure YouTube settings.</div>
+              <div>
+                <div className="empty-state">Sign in with Google to configure YouTube settings.</div>
+                <button className="btn btn-primary" type="button" style={{ marginTop: 12 }} onClick={onLogin}>
+                  <GoogleLogoIcon className="icon-inline" />
+                  <span>Sign in with Google</span>
+                </button>
+              </div>
             ) : (
               <>
                 <div className="yt-config yt-config-compact">
@@ -2706,24 +2685,24 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
           </div>
         )}
 
-        {activeTab === 'ffmpeg' && (
+        {activeTab === 'info' && (
           <div className="dash-section">
             <h3>
-              <img src="https://img.icons8.com/color/48/ffmpeg.png" className="icon-inline" style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8 }} alt="" />
-              FFmpeg Configuration
+              <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">info</span>
+              App Info
             </h3>
-            <div className="ffmpeg-detail-grid">
-              <span className="detail-label">Status</span>
-              <span className={ffmpegDetails?.available ? 'detail-val-ok' : 'detail-val-err'}>
-                {ffmpegDetails?.available ? '✅ Installed' : '❌ Not Installed'}
-              </span>
-              <span className="detail-label">Version</span>
-              <span>{ffmpegDetails?.version || 'Unknown'}</span>
-              <span className="detail-label">Path</span>
-              <span style={{ wordBreak: 'break-all' }}>{ffmpegDetails?.path || 'N/A'}</span>
-              <span className="detail-label">Source</span>
-              <span>{ffmpegDetails?.isBundled ? 'Bundled with app' : 'System PATH'}</span>
-            </div>
+
+            <h4 style={{ marginTop: 12, marginBottom: 8 }}>FFmpeg</h4>
+            <p className="panel-subtitle" style={{ marginBottom: 0 }}>
+              Version: {ffmpegDetails?.version || 'Unknown'}
+            </p>
+
+            <h4 style={{ marginTop: 16, marginBottom: 8 }}>Developers</h4>
+            <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--olive-200)' }}>
+              <li>Jave Bacsain</li>
+              <li>Carl Gerald Parro</li>
+              <li>Marc Justin Prestado</li>
+            </ul>
           </div>
         )}
 
