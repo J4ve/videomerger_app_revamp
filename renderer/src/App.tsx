@@ -1244,6 +1244,13 @@ const App: React.FC = () => {
     return (
       <div className="wizard-app">
         <div className="wizard-shell">
+          <header className="wizard-header">
+            <div className="brand">
+              <img src="/app-icon.svg" alt="Video Merger icon" className="brand-logo" />
+              <div><h1>VideoMerger</h1></div>
+            </div>
+          </header>
+          <div className="wizard-subheader" />
           <main className="wizard-main" style={{ display: 'grid', placeItems: 'center' }}>
             <div className="panel" style={{ textAlign: 'center', maxWidth: 400 }}>
               <div className="dropzone-icon" style={{ margin: '0 auto 16px' }}>⏳</div>
@@ -1259,7 +1266,7 @@ const App: React.FC = () => {
     return (
       <div className="wizard-app">
         <div className="wizard-shell">
-          <header className="wizard-header" style={{ justifyContent: 'center' }}>
+          <header className="wizard-header">
             <div className="brand">
               <AppBrandLogo />
               <div>
@@ -1267,6 +1274,7 @@ const App: React.FC = () => {
               </div>
             </div>
           </header>
+          <div className="wizard-subheader" />
           <main className="wizard-main" style={{ display: 'grid', placeItems: 'center' }}>
             <section className="panel auth-prompt fade-in" style={{ maxWidth: 460, textAlign: 'center' }}>
               <h2>Welcome</h2>
@@ -1299,13 +1307,17 @@ const App: React.FC = () => {
               <AppBrandLogo />
               <div>
                 <h1>VideoMerger</h1>
-                <p>Dashboard &amp; Settings</p>
               </div>
             </div>
-            <div />
-            <button className="btn btn-ghost" style={{ justifySelf: 'end' }} onClick={() => setShowDashboard(false)}>
-              ✕ Close
-            </button>
+            <div className="header-actions">
+              <button
+                className="header-close-btn"
+                onClick={() => setShowDashboard(false)}
+                title="Close"
+              >
+                ✕ Close
+              </button>
+            </div>
           </header>
           <main className="wizard-main">
             <DashboardPanel
@@ -1340,20 +1352,11 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="stepper" aria-label="Merge workflow steps">
-            <div className={getStepCircleClass(1)}>1</div>
-            <div className={`step-line ${step >= 2 ? 'step-line-active' : ''}`} />
-            <div className={getStepCircleClass(2)}>2</div>
-            <div className={`step-line ${step >= 3 ? 'step-line-active' : ''}`} />
-            <div className={getStepCircleClass(3)}>3</div>
-          </div>
-
-          <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="header-actions">
             <button
               className="status-chip"
               onClick={() => setShowFFmpegDialog(true)}
               title="Click for FFmpeg details"
-              style={{ cursor: 'pointer' }}
               id="ffmpeg-status-chip"
             >
               <span className={`status-dot ${ffmpegStatus === 'Installed' ? 'status-dot-ok' : 'status-dot-err'}`} />
@@ -1361,7 +1364,7 @@ const App: React.FC = () => {
               <span>{ffmpegStatus}</span>
             </button>
             <button
-              className="mini-btn"
+              className="header-icon-btn"
               onClick={() => {
                 setDashboardInitialTab('general');
                 setShowDashboard(true);
@@ -1386,6 +1389,17 @@ const App: React.FC = () => {
             )}
           </div>
         </header>
+
+        {/* Step progress sub-bar */}
+        <div className="wizard-subheader" aria-label="Merge workflow steps">
+          <div className="stepper">
+            <div className={getStepCircleClass(1)}>1</div>
+            <div className={`step-line ${step >= 2 ? 'step-line-active' : ''}`} />
+            <div className={getStepCircleClass(2)}>2</div>
+            <div className={`step-line ${step >= 3 ? 'step-line-active' : ''}`} />
+            <div className={getStepCircleClass(3)}>3</div>
+          </div>
+        </div>
 
         {/* FFmpeg Details Dialog */}
         {showFFmpegDialog && (
@@ -2370,8 +2384,8 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
   const tabs = [
     { id: 'general', label: 'General' },
-    { id: 'youtube', label: 'YouTube', icon: 'smart_display' },
-    { id: 'ffmpeg', label: 'FFmpeg' },
+    { id: 'youtube', label: 'YouTube', iconUrl: 'https://img.icons8.com/color/48/youtube-play.png' },
+    { id: 'ffmpeg', label: 'FFmpeg', iconUrl: 'https://img.icons8.com/color/48/ffmpeg.png' },
     { id: 'account', label: 'Account', icon: 'google_logo' },
   ];
 
@@ -2386,6 +2400,8 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
           >
             {tab.icon === 'google_logo' ? (
               <GoogleLogoIcon className="icon-inline" />
+            ) : (tab as any).iconUrl ? (
+              <img src={(tab as any).iconUrl} className="icon-inline" style={{ width: 16, height: 16, objectFit: 'contain' }} alt="" />
             ) : tab.icon ? (
               <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">{tab.icon}</span>
             ) : null}
@@ -2443,7 +2459,7 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
         {activeTab === 'youtube' && (
           <div className="dash-section">
             <h3>
-              <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">smart_display</span>
+              <img src="https://img.icons8.com/color/48/youtube-play.png" className="icon-inline" style={{ width: 22, height: 22, objectFit: 'contain', marginRight: 8 }} alt="" />
               YouTube Defaults
             </h3>
             {!isLoggedIn ? (
@@ -2639,7 +2655,10 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
 
         {activeTab === 'ffmpeg' && (
           <div className="dash-section">
-            <h3>FFmpeg Configuration</h3>
+            <h3>
+              <img src="https://img.icons8.com/color/48/ffmpeg.png" className="icon-inline" style={{ width: 20, height: 20, objectFit: 'contain', marginRight: 8 }} alt="" />
+              FFmpeg Configuration
+            </h3>
             <div className="ffmpeg-detail-grid">
               <span className="detail-label">Status</span>
               <span className={ffmpegDetails?.available ? 'detail-val-ok' : 'detail-val-err'}>
