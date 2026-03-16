@@ -288,6 +288,7 @@ const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
   const [authChecked, setAuthChecked] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string>('');
 
   // YouTube config state
   const [ytTitle, setYtTitle] = useState<string>('');
@@ -591,6 +592,7 @@ const App: React.FC = () => {
 
   const handleGoogleLogin = async (source: 'welcome' | 'dashboard' = 'welcome') => {
     console.debug('[Auth][Renderer] Google sign-in clicked', { source, step, isLoggedIn });
+    setAuthError('');
     setStatus('');
     try {
       const result = await window.electronAPI.googleOAuthLogin();
@@ -601,27 +603,28 @@ const App: React.FC = () => {
         error: result?.error || null,
       });
       if (result.success && result.user) {
+        setAuthError('');
         setIsLoggedIn(true);
         setGoogleUser(result.user);
         // Advance only if the user is on the welcome screen; keep dashboard open otherwise.
         setStep((prev) => (prev === 0 ? 1 : prev));
         return true;
       }
-      setStatus(result?.error ? `Google sign-in failed: ${result.error}` : 'Google sign-in failed. Please try again.');
+      const message = result?.error ? `Google sign-in failed: ${result.error}` : 'Google sign-in failed. Please try again.';
+      setAuthError(message);
+      setStatus(message);
       return false;
     } catch (err: any) {
       console.error('[Auth][Renderer] googleOAuthLogin threw', err);
-      setStatus(err?.message ? `Google sign-in failed: ${err.message}` : 'Google sign-in failed. Check your internet connection and try again.');
+      const message = err?.message ? `Google sign-in failed: ${err.message}` : 'Google sign-in failed. Check your internet connection and try again.';
+      setAuthError(message);
+      setStatus(message);
       return false;
     }
   };
 
   const handleGoogleLoginFromWelcome = () => {
     void handleGoogleLogin('welcome');
-  };
-
-  const handleGoogleLoginFromDashboard = () => {
-    void handleGoogleLogin('dashboard');
   };
 
   const handleSkipLogin = async () => {
@@ -631,6 +634,7 @@ const App: React.FC = () => {
     } catch {
       // Continue in guest mode even if logout IPC fails.
     }
+    setAuthError('');
     setIsLoggedIn(false);
     setGoogleUser(null);
     setStep(1);
@@ -638,6 +642,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await window.electronAPI.googleOAuthLogout();
+    setAuthError('');
     setIsLoggedIn(false);
     setGoogleUser(null);
   };
@@ -1390,6 +1395,7 @@ const App: React.FC = () => {
                   <GoogleLogoIcon className="icon-inline" />
                   <span>Sign in with Google</span>
                 </button>
+                {authError && <p className="auth-error-text">{authError}</p>}
                 <button className="btn btn-ghost auth-btn" onClick={handleSkipLogin}>
                   Continue without account
                 </button>
@@ -1439,7 +1445,8 @@ const App: React.FC = () => {
               onOutputNameTemplateChange={setOutputNameTemplate}
               onYouTubeSettingsSync={syncFinalizeYouTubeFromSettings}
               onLogout={handleLogout}
-              onLogin={handleGoogleLoginFromDashboard}
+              authError={authError}
+              onLogin={() => handleGoogleLogin('dashboard')}
             />
           </main>
         </div>
@@ -2188,7 +2195,8 @@ interface DashboardPanelProps {
     presets: YouTubeQuickPreset[];
   }) => void;
   onLogout: () => void;
-  onLogin: () => void;
+  authError: string;
+  onLogin: () => Promise<boolean>;
 }
 
 interface UserAvatarProps {
@@ -2222,7 +2230,7 @@ const UserAvatar: React.FC<UserAvatarProps> = ({ user, size }) => {
 
 const DashboardPanel: React.FC<DashboardPanelProps> = ({
   isLoggedIn, googleUser, ffmpegDetails, standardization, initialTab, appTheme, defaultOutputDir, outputNameTemplate,
-  onStandardizationChange, onThemeChange, onDefaultOutputDirChange, onOutputNameTemplateChange, onYouTubeSettingsSync, onLogout, onLogin
+  onStandardizationChange, onThemeChange, onDefaultOutputDirChange, onOutputNameTemplateChange, onYouTubeSettingsSync, onLogout, authError, onLogin
 }) => {
   const [settings, setSettings] = useState<any>({
     appTheme: appTheme,
@@ -2641,10 +2649,11 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
             {!isLoggedIn ? (
               <div>
                 <div className="empty-state">Sign in with Google to configure YouTube settings.</div>
-                <button className="btn btn-primary" type="button" style={{ marginTop: 12 }} onClick={onLogin}>
+                <button className="btn btn-primary" type="button" style={{ marginTop: 12 }} onClick={() => { void onLogin(); }}>
                   <GoogleLogoIcon className="icon-inline" />
                   <span>Sign in with Google</span>
                 </button>
+                {authError && <p className="auth-error-text" style={{ marginTop: 10 }}>{authError}</p>}
               </div>
             ) : (
               <>
@@ -2951,10 +2960,11 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
             ) : (
               <div>
                 <p className="panel-subtitle">Not signed in. YouTube features are disabled.</p>
-                <button className="btn btn-primary" onClick={onLogin}>
+                <button className="btn btn-primary" onClick={() => { void onLogin(); }}>
                   <GoogleLogoIcon className="icon-inline" />
                   <span>Sign in with Google</span>
                 </button>
+                {authError && <p className="auth-error-text" style={{ marginTop: 10 }}>{authError}</p>}
               </div>
             )}
           </div>

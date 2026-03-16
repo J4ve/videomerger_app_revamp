@@ -63,13 +63,46 @@ function getEnvSearchDirectories(): string[] {
     directories.push(execDir);
     directories.push(path.join(execDir, 'resources'));
     directories.push(path.join(execDir, 'resources', 'runtime-config'));
+    directories.push(path.join(execDir, 'resources', 'resources'));
+    directories.push(path.join(execDir, 'resources', 'resources', 'runtime-config'));
   }
   if (resourcesPath) {
     directories.push(resourcesPath);
     directories.push(path.join(resourcesPath, 'runtime-config'));
+    directories.push(path.join(resourcesPath, 'resources'));
+    directories.push(path.join(resourcesPath, 'resources', 'runtime-config'));
   }
 
   return Array.from(new Set(directories.filter(Boolean)));
+}
+
+function findBundledGoogleClientJsonPath(): string | null {
+  const exactCandidates = [
+    'google-oauth-client.json',
+    'oauth-client.json',
+    'client_secret.json',
+  ];
+
+  for (const dir of getEnvSearchDirectories()) {
+    for (const fileName of exactCandidates) {
+      const candidate = path.join(dir, fileName);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const matched = entries.find((entry) => entry.isFile() && /^client_secret.*\.json$/i.test(entry.name));
+      if (matched) {
+        return path.join(dir, matched.name);
+      }
+    } catch {
+      // Ignore unreadable directories.
+    }
+  }
+
+  return null;
 }
 
 function loadMergedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
@@ -120,11 +153,13 @@ function readGoogleClientJson(mergedEnv: Record<string, string>): GoogleClientSe
   }
 
   const jsonFilePath = mergedEnv.GOOGLE_OAUTH_CLIENT_JSON_FILE;
-  if (!jsonFilePath) {
+  const resolved = jsonFilePath
+    ? resolveFromEnvSearchDirectories(jsonFilePath)
+    : findBundledGoogleClientJsonPath();
+
+  if (!jsonFilePath && !resolved) {
     return null;
   }
-
-  const resolved = resolveFromEnvSearchDirectories(jsonFilePath);
 
   if (!resolved || !fs.existsSync(resolved)) {
     throw new Error(`GOOGLE_OAUTH_CLIENT_JSON_FILE not found: ${resolved}`);

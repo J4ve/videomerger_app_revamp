@@ -56,6 +56,22 @@ describe('App', () => {
       await skipAuth();
       expect(screen.getByText('Add your videos')).toBeInTheDocument();
     });
+
+    it('shows auth error when google sign-in fails', async () => {
+      mockElectronAPI.googleOAuthLogin.mockResolvedValueOnce({
+        success: false,
+        error: 'OAuth callback server error: listen EADDRINUSE',
+      });
+
+      render(<App />);
+      await waitFor(() => expect(screen.getByText('Sign in with Google')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Sign in with Google'));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Google sign-in failed: OAuth callback server error/i)).toBeInTheDocument();
+      });
+    });
   });
 
   // ─── Step 1: Add Videos ───

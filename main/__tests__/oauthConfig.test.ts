@@ -86,4 +86,40 @@ describe('getGoogleOAuthConfig', () => {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
   });
+
+  it('loads GOOGLE_CLIENT_ID/SECRET from nested resources/runtime-config paths', () => {
+    const originalResourcesPath = (process as any).resourcesPath;
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oauth-config-nested-'));
+    const nestedRuntimeConfig = path.join(tmpRoot, 'resources', 'runtime-config');
+
+    fs.mkdirSync(nestedRuntimeConfig, { recursive: true });
+    fs.writeFileSync(
+      path.join(nestedRuntimeConfig, '.env'),
+      [
+        'GOOGLE_CLIENT_ID=nested-id',
+        'GOOGLE_CLIENT_SECRET=nested-secret',
+        'GOOGLE_REDIRECT_URI=http://localhost:8976/oauth2callback',
+      ].join('\n'),
+      'utf-8'
+    );
+
+    Object.defineProperty(process, 'resourcesPath', {
+      value: tmpRoot,
+      configurable: true,
+    });
+
+    try {
+      const config = getGoogleOAuthConfig({} as any);
+
+      expect(config.clientId).toBe('nested-id');
+      expect(config.clientSecret).toBe('nested-secret');
+      expect(config.redirectUri).toBe('http://localhost:8976/oauth2callback');
+    } finally {
+      Object.defineProperty(process, 'resourcesPath', {
+        value: originalResourcesPath,
+        configurable: true,
+      });
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
 });
