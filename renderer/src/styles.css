@@ -235,16 +235,18 @@ body {
   top: 0;
   z-index: 20;
   /* Solid dark tone similar to Docker Desktop toolbar */
-  background: linear-gradient(180deg, var(--header-bg-top), var(--header-bg-bottom));
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   padding: 0 16px 0 16px;
-  height: 44px; /* slim header matching Docker Desktop */
+  height: 44px;
+  /* slim header matching Docker Desktop */
   display: grid;
-  grid-template-columns: auto 1fr; /* brand | actions - 2 col now stepper is below */
+  grid-template-columns: auto 1fr;
+  /* brand | actions - 2 col now stepper is below */
   align-items: center;
   gap: 12px;
   -webkit-app-region: drag;
-  padding-right: 155px; /* Space for Windows control buttons: ~138px + small margin */
+  padding-right: 170px;
+  /* Space for Windows control buttons: slightly increased for better gap */
 }
 
 .brand {
@@ -256,10 +258,10 @@ body {
 }
 
 .brand-logo {
-  width: 50px;
-  height: 50px;
-  border-radius: 14px;
-  box-shadow: 0 10px 18px rgba(var(--accent-rgb), 0.22);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
 }
 
 .brand h1 {
@@ -989,7 +991,7 @@ body {
   font-size: 0.92rem;
 }
 
-.preview-meta > span:nth-child(odd) {
+.preview-meta>span:nth-child(odd) {
   color: var(--olive-300);
   font-weight: 600;
 }
@@ -1146,8 +1148,13 @@ body {
   font-weight: 600;
 }
 
-.detail-val-ok { color: var(--green-500); }
-.detail-val-err { color: var(--danger-500); }
+.detail-val-ok {
+  color: var(--green-500);
+}
+
+.detail-val-err {
+  color: var(--danger-500);
+}
 
 /* ─── Auth Prompt ─── */
 
@@ -1514,6 +1521,7 @@ body {
     opacity: 0;
     transform: translateY(8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
