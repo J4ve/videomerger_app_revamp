@@ -436,6 +436,9 @@ Also shows a summary of:
 
 - Choose output path
 - Start merge and monitor progress
+- Includes a collapsible **Advanced settings** section under Merge Settings for custom target resolution and FPS standardization.
+- Advanced settings display a warning because forcing custom values may increase processing time and introduce re-encoding differences.
+- Resolution choices include **Vertical (Phone)** and **Custom** options.
 
 ### YouTube Upload
 

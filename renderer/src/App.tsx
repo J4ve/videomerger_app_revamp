@@ -77,9 +77,11 @@ const SUPPORTED_EXTENSIONS = [
 
 const RESOLUTION_OPTIONS = [
   { value: 'original', label: 'Original' },
-  { value: '720p', label: '720p (1280×720)' },
-  { value: '1080p', label: '1080p (1920×1080)' },
-  { value: '4k', label: '4K (3840×2160)' },
+  { value: '720p', label: '720p' },
+  { value: '1080p', label: '1080p' },
+  { value: '4k', label: '4K' },
+  { value: 'vertical', label: 'Vertical (Phone)' },
+  { value: 'custom', label: 'Custom' },
 ];
 
 const FPS_OPTIONS = [
@@ -87,6 +89,7 @@ const FPS_OPTIONS = [
   { value: '24', label: '24 FPS' },
   { value: '30', label: '30 FPS' },
   { value: '60', label: '60 FPS' },
+  { value: 'custom', label: 'Custom' },
 ];
 
 type SortField = 'none' | 'name' | 'size' | 'duration' | 'date';
@@ -275,6 +278,8 @@ const App: React.FC = () => {
   const [standardization, setStandardization] = useState<{
     resolution: string; fps: string;
   }>({ resolution: 'original', fps: 'original' });
+  const [customResolution, setCustomResolution] = useState<string>('');
+  const [customFps, setCustomFps] = useState<string>('30');
 
   // Auth state
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
@@ -981,25 +986,9 @@ const App: React.FC = () => {
     let targetFpsLabel = selectedFpsLabel;
 
     if (standardization.resolution === 'original') {
-      const validRes = selectedFiles
-        .map((filePath) => arrangeVideoMeta[filePath])
-        .filter((meta): meta is ArrangeVideoMeta => !!meta && !!meta.width && !!meta.height);
-
-      if (validRes.length > 0) {
-        let best = validRes[0];
-        for (const meta of validRes) {
-          const bestArea = (best.width || 0) * (best.height || 0);
-          const currentArea = (meta.width || 0) * (meta.height || 0);
-          if (currentArea > 0 && currentArea < bestArea) {
-            best = meta;
-          }
-        }
-        if (best.width && best.height) {
-          targetResolution = `${best.width}x${best.height}`;
-        }
-      } else {
-        targetResolution = 'Original (auto)';
-      }
+      targetResolution = 'Original';
+    } else if (standardization.resolution === 'custom') {
+      targetResolution = 'Custom';
     }
 
     if (standardization.fps === 'original') {
@@ -1012,6 +1001,8 @@ const App: React.FC = () => {
       } else {
         targetFpsLabel = 'Original (auto)';
       }
+    } else if (standardization.fps === 'custom') {
+      targetFpsLabel = 'Custom';
     }
 
     return {
@@ -1072,10 +1063,23 @@ const App: React.FC = () => {
 
     setStatus('Merging videos...');
 
+    const normalizedCustomResolution = customResolution.trim();
+    const normalizedCustomFps = customFps.trim();
+    const effectiveStandardization = {
+      resolution:
+        standardization.resolution === 'custom'
+          ? (normalizedCustomResolution || 'original')
+          : standardization.resolution,
+      fps:
+        standardization.fps === 'custom'
+          ? (normalizedCustomFps || 'original')
+          : standardization.fps,
+    };
+
     const result = await window.electronAPI.mergeVideos({
       inputPaths: selectedFiles,
       outputPath: resolvedOutputPath,
-      standardization: standardization,
+      standardization: effectiveStandardization,
     });
 
     if (!result.success) {
@@ -1800,6 +1804,71 @@ const App: React.FC = () => {
                             Signed in as {googleUser?.name || googleUser?.email || 'Google User'}
                           </p>
                         )}
+                      </div>
+
+                      <div className="preview-block">
+                        <details className="merge-summary-details">
+                          <summary className="merge-summary-toggle">Advanced settings</summary>
+                          <div className="upload-error" style={{ marginTop: 10 }}>
+                            <strong>Warning:</strong> Forcing custom resolution/FPS can increase processing time and may cause re-encoding differences.
+                          </div>
+
+                          <div className="advanced-standardization-row" style={{ marginTop: 10 }}>
+                            <label className="advanced-standardization-field">
+                              Target Resolution
+                              <select
+                                className="std-select"
+                                value={standardization.resolution}
+                                onChange={(e) => setStandardization((prev) => ({ ...prev, resolution: e.target.value }))}
+                              >
+                                {RESOLUTION_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label className="advanced-standardization-field">
+                              Target FPS
+                              <select
+                                className="std-select"
+                                value={standardization.fps}
+                                onChange={(e) => setStandardization((prev) => ({ ...prev, fps: e.target.value }))}
+                              >
+                                {FPS_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+
+                          {standardization.resolution === 'custom' && (
+                            <label className="advanced-standardization-field" style={{ marginTop: 10 }}>
+                              Custom Resolution
+                              <input
+                                type="text"
+                                value={customResolution}
+                                onChange={(e) => setCustomResolution(e.target.value)}
+                                className="yt-input"
+                                placeholder="Enter custom resolution"
+                              />
+                            </label>
+                          )}
+
+                          {standardization.fps === 'custom' && (
+                            <label className="advanced-standardization-field" style={{ marginTop: 10 }}>
+                              Custom FPS
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={customFps}
+                                onChange={(e) => setCustomFps(e.target.value)}
+                                className="yt-input"
+                                placeholder="30"
+                              />
+                            </label>
+                          )}
+                        </details>
                       </div>
 
                       <div className="preview-block">

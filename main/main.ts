@@ -312,7 +312,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 1080,
+    minWidth: 1085,
     minHeight: 720,
     titleBarStyle: 'hidden',
     titleBarOverlay: {

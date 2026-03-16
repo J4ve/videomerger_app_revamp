@@ -182,6 +182,28 @@ describe('App', () => {
   // ─── Step 3: Finalize ───
 
   describe('Finalize (Step 3)', () => {
+    async function goToStep3LoggedIn() {
+      mockElectronAPI.getGoogleAuthStatus.mockResolvedValue({
+        isLoggedIn: true,
+        user: { name: 'Test User', email: 'test@mail.com' },
+      });
+      mockElectronAPI.selectVideoFiles.mockResolvedValue(['C:\\a.mp4', 'C:\\b.mp4']);
+
+      render(<App />);
+      await waitFor(() => expect(screen.getByText('Sign in with Google')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('Sign in with Google'));
+      await waitFor(() => expect(screen.getByText('Add your videos')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId('dropzone'));
+      await waitFor(() => expect(screen.getByText('a.mp4')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Proceed'));
+      await waitFor(() => expect(screen.getByText('Arrange sequence')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Finalize'));
+      await waitFor(() => expect(screen.getByText('Finalize and merge')).toBeInTheDocument());
+    }
+
     it('reaches merge screen and shows output path', async () => {
       mockElectronAPI.selectVideoFiles.mockResolvedValue(['C:\\a.mp4', 'C:\\b.mp4']);
       render(<App />);
@@ -218,6 +240,26 @@ describe('App', () => {
       await waitFor(() => expect(screen.getByText('Finalize and merge')).toBeInTheDocument());
 
       expect(screen.getByText('C:\\Exports\\final_cut.mp4')).toBeInTheDocument();
+    });
+
+    it('keeps Advanced settings visible after switching to YouTube settings and logging out', async () => {
+      await goToStep3LoggedIn();
+
+      await waitFor(() => expect(screen.getByText('YouTube Settings')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('YouTube Settings'));
+      await waitFor(() => expect(screen.getByText('YouTube quick setup')).toBeInTheDocument());
+
+      expect(screen.getByText('Advanced settings')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTitle('test@mail.com'));
+      await waitFor(() => expect(screen.getByText('Google Account')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Sign out'));
+      await waitFor(() => expect(screen.getByText('Sign in with Google')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('✕ Close'));
+      await waitFor(() => expect(screen.getByText('Finalize and merge')).toBeInTheDocument());
+      expect(screen.getByText('Advanced settings')).toBeInTheDocument();
     });
   });
 });

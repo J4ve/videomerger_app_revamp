@@ -1005,10 +1005,31 @@ body {
 .config-switch-text {
   display: inline-flex;
   align-items: center;
-  color: var(--olive-300);
-  font-size: 0.84rem;
-  font-weight: 600;
+  color: var(--olive-200);
+  font-size: 1.24rem;
+  font-weight: 800;
+  line-height: 1.15;
   padding: 8px 2px;
+}
+
+.advanced-standardization-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.advanced-standardization-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--olive-300);
+  font-size: 0.9rem;
+}
+
+.advanced-standardization-field .std-select,
+.advanced-standardization-field .yt-input {
+  margin-top: 2px;
 }
 
 .config-switch-btn {
@@ -1290,6 +1311,13 @@ body {
   gap: 6px;
   color: var(--olive-300);
   font-size: 0.88rem;
+}
+
+@media (max-width: 760px) {
+  .advanced-standardization-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
 }
 
 .yt-input {
