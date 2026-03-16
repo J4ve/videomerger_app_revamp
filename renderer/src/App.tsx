@@ -17,6 +17,7 @@ declare global {
         fps: number | null;
       }>>;
       mergeVideos: (options: any) => Promise<any>;
+      cancelMerge: () => Promise<{ success: boolean }>;
       checkFFmpeg: () => Promise<{ available: boolean; version: string }>;
       checkFFmpegDetails: () => Promise<{
         available: boolean;
@@ -262,8 +263,10 @@ const App: React.FC = () => {
   const [outputPath, setOutputPath] = useState<string>('');
   const [status, setStatus] = useState<string>('Ready');
   const [isMerging, setIsMerging] = useState<boolean>(false);
+  const [isCancellingMerge, setIsCancellingMerge] = useState<boolean>(false);
   const [mergeComplete, setMergeComplete] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
+  const mergeCancelledRef = useRef<boolean>(false);
 
   // FFmpeg state
   const [ffmpegStatus, setFFmpegStatus] = useState<string>('Checking...');
@@ -358,9 +361,17 @@ const App: React.FC = () => {
         setProgress(event.progress || 0);
       } else if (event.type === 'error') {
         setIsMerging(false);
-        setStatus(event.error?.message || event.message || 'Merge failed.');
+        setIsCancellingMerge(false);
+        const errorMessage = (event.error?.message || event.message || 'Merge failed.').toLowerCase();
+        if (errorMessage.includes('cancel')) {
+          setProgress(0);
+          setStatus('Merge canceled.');
+        } else {
+          setStatus(event.error?.message || event.message || 'Merge failed.');
+        }
       } else if (event.type === 'complete') {
         setIsMerging(false);
+        setIsCancellingMerge(false);
         setMergeComplete(true);
         setProgress(100);
         if (event.result?.outputPath) {
@@ -1050,6 +1061,8 @@ const App: React.FC = () => {
     }
 
     setIsMerging(true);
+    mergeCancelledRef.current = false;
+    setIsCancellingMerge(false);
     setMergeComplete(false);
     setProgress(0);
     setStatus('Validating files...');
@@ -1082,11 +1095,44 @@ const App: React.FC = () => {
       standardization: effectiveStandardization,
     });
 
+    if (mergeCancelledRef.current) {
+      setIsMerging(false);
+      setIsCancellingMerge(false);
+      setProgress(0);
+      setStatus('Merge canceled.');
+      return;
+    }
+
     if (!result.success) {
       setStatus(`Error: ${result.error}`);
       setIsMerging(false);
+      setIsCancellingMerge(false);
     } else if (result.outputPath) {
       setOutputPath(result.outputPath);
+    }
+  };
+
+  const handleCancelMerge = async () => {
+    if (!isMerging || isCancellingMerge) return;
+
+    const shouldCancel = window.confirm('Cancel the current merge? Any in-progress work will be stopped.');
+    if (!shouldCancel) {
+      return;
+    }
+
+    mergeCancelledRef.current = true;
+    setIsCancellingMerge(true);
+    setStatus('Cancelling merge...');
+
+    try {
+      const result = await window.electronAPI.cancelMerge();
+      if (!result?.success) {
+        setIsCancellingMerge(false);
+        setStatus('Unable to cancel merge.');
+      }
+    } catch {
+      setIsCancellingMerge(false);
+      setStatus('Unable to cancel merge.');
     }
   };
 
@@ -2074,8 +2120,12 @@ const App: React.FC = () => {
 
         {!mergeComplete && step >= 1 && (
           <footer className="wizard-footer">
-            <button className="btn btn-ghost" onClick={handleBack} disabled={step <= 1 || isMerging}>
-              Back
+            <button
+              className="btn btn-ghost"
+              onClick={isMerging ? handleCancelMerge : handleBack}
+              disabled={isCancellingMerge || (!isMerging && step <= 1)}
+            >
+              {isMerging ? (isCancellingMerge ? 'Cancelling...' : 'Cancel Merge') : 'Back'}
             </button>
             <button
               className="btn btn-primary"

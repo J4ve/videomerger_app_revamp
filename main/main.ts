@@ -695,6 +695,12 @@ function setupIPC(): void {
     return await service.mergeVideos(options);
   });
 
+  ipcMain.handle('cancel-merge', async () => {
+    const spawner = container.resolve<NodeProcessSpawner>('ProcessSpawner');
+    const canceled = spawner.cancelRunningProcess();
+    return { success: canceled };
+  });
+
   ipcMain.handle('check-ffmpeg', async () => {
     const adapter = container.resolve<PythonFFmpegAdapter>('FFmpegAdapter');
     const available = await adapter.isAvailable();

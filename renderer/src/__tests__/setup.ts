@@ -10,6 +10,7 @@ const mockElectronAPI = {
   getVideoInfo: vi.fn().mockResolvedValue({}),
   getArrangeVideoMetadata: vi.fn().mockResolvedValue({}),
   mergeVideos: vi.fn().mockResolvedValue({ success: true, outputPath: 'C:\\output.mp4' }),
+  cancelMerge: vi.fn().mockResolvedValue({ success: true }),
   checkFFmpeg: vi.fn().mockResolvedValue({ available: true, version: '6.0' }),
   checkFFmpegDetails: vi.fn().mockResolvedValue({
     available: true,

@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVideoInfo: (path: string) => ipcRenderer.invoke('get-video-info', path),
   getArrangeVideoMetadata: (paths: string[]) => ipcRenderer.invoke('get-arrange-video-metadata', paths),
   mergeVideos: (options: any) => ipcRenderer.invoke('merge-videos', options),
+  cancelMerge: () => ipcRenderer.invoke('cancel-merge'),
   checkFFmpeg: () => ipcRenderer.invoke('check-ffmpeg'),
   checkFFmpegDetails: () => ipcRenderer.invoke('check-ffmpeg-details'),
   openFolder: (path: string) => ipcRenderer.invoke('open-folder', path),

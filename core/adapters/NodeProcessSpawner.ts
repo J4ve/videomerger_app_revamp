@@ -7,6 +7,23 @@ import { spawn, ChildProcess } from 'child_process';
  */
 export class NodeProcessSpawner implements IProcessSpawner {
   private static readonly MAX_CAPTURE_BYTES = 1_000_000;
+  private activeProcess: ChildProcess | null = null;
+  private cancellationRequested = false;
+
+  cancelRunningProcess(): boolean {
+    if (!this.activeProcess || this.activeProcess.killed) {
+      return false;
+    }
+
+    this.cancellationRequested = true;
+
+    try {
+      this.activeProcess.kill('SIGTERM');
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   /**
    * Spawn a child process
@@ -24,6 +41,8 @@ export class NodeProcessSpawner implements IProcessSpawner {
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise((resolve, reject) => {
       const process = spawn(command, args);
+      this.activeProcess = process;
+      this.cancellationRequested = false;
 
       let stdout = '';
       let stderr = '';
@@ -46,15 +65,26 @@ export class NodeProcessSpawner implements IProcessSpawner {
         if (onStderr) onStderr(str);
       });
 
-      process.on('close', (code) => {
+      process.on('close', (code, signal) => {
+        const wasCancelled = this.cancellationRequested;
+        const exitCode = typeof code === 'number' ? code : (signal ? 1 : 0);
+        if (wasCancelled && !stderr.includes('Merge cancelled by user.')) {
+          stderr = `${stderr ? `${stderr}\n` : ''}Merge cancelled by user.`;
+        }
+
+        this.activeProcess = null;
+        this.cancellationRequested = false;
+
         resolve({
           stdout,
           stderr,
-          exitCode: code || 0,
+          exitCode,
         });
       });
 
       process.on('error', (error) => {
+        this.activeProcess = null;
+        this.cancellationRequested = false;
         reject(error);
       });
     });

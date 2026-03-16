@@ -242,6 +242,36 @@ describe('App', () => {
       expect(screen.getByText('C:\\Exports\\final_cut.mp4')).toBeInTheDocument();
     });
 
+    it('shows cancel option while merging and invokes cancel API', async () => {
+      mockElectronAPI.selectVideoFiles.mockResolvedValue(['C:\\a.mp4', 'C:\\b.mp4']);
+      let resolveMerge: (value: any) => void = () => {};
+      mockElectronAPI.mergeVideos.mockImplementation(() => new Promise((resolve) => {
+        resolveMerge = resolve;
+      }));
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      render(<App />);
+      await skipAuth();
+      fireEvent.click(screen.getByTestId('dropzone'));
+      await waitFor(() => expect(screen.getByText('a.mp4')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Proceed'));
+      await waitFor(() => expect(screen.getByText('Arrange sequence')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Finalize'));
+      await waitFor(() => expect(screen.getByText('Finalize and merge')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Start Merge'));
+      await waitFor(() => expect(screen.getByText('Cancel Merge')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Cancel Merge'));
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(mockElectronAPI.cancelMerge).toHaveBeenCalledTimes(1));
+
+      resolveMerge({ success: true, outputPath: 'C:\\output.mp4' });
+      confirmSpy.mockRestore();
+    });
+
     it('keeps Advanced settings visible after switching to YouTube settings and logging out', async () => {
       await goToStep3LoggedIn();
 

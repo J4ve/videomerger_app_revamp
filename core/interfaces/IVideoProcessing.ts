@@ -239,6 +239,12 @@ export interface IProcessSpawner {
     onStdout?: (data: string) => void,
     onStderr?: (data: string) => void
   ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+
+  /**
+   * Cancel the currently running spawned process, if any
+   * @returns true if a process was signaled, false otherwise
+   */
+  cancelRunningProcess(): boolean;
 }
 
 /**
