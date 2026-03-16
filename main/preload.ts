@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   selectVideoFiles: () => ipcRenderer.invoke('select-video-files'),
-  selectSaveLocation: (initialDirectory?: string) => ipcRenderer.invoke('select-save-location', initialDirectory),
+  selectSaveLocation: (initialDirectory?: string, preferredFileName?: string) => ipcRenderer.invoke('select-save-location', initialDirectory, preferredFileName),
   selectOutputDirectory: () => ipcRenderer.invoke('select-output-directory'),
   validateVideos: (paths: string[]) => ipcRenderer.invoke('validate-videos', paths),
   getVideoInfo: (path: string) => ipcRenderer.invoke('get-video-info', path),

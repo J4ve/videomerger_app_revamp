@@ -626,8 +626,10 @@ function setupIPC(): void {
     return result.filePaths;
   });
 
-  ipcMain.handle('select-save-location', async (event, initialDirectory?: string) => {
-    const defaultFileName = `merged_video_${Date.now()}.mp4`;
+  ipcMain.handle('select-save-location', async (event, initialDirectory?: string, preferredFileName?: string) => {
+    const defaultFileName = (typeof preferredFileName === 'string' && preferredFileName.trim())
+      ? preferredFileName.trim()
+      : `merged_video_${Date.now()}.mp4`;
     const defaultPath = initialDirectory
       ? path.join(initialDirectory, defaultFileName)
       : defaultFileName;

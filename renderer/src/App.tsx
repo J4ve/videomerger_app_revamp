@@ -4,7 +4,7 @@ declare global {
   interface Window {
     electronAPI: {
       selectVideoFiles: () => Promise<string[]>;
-      selectSaveLocation: (initialDirectory?: string) => Promise<string | undefined>;
+      selectSaveLocation: (initialDirectory?: string, preferredFileName?: string) => Promise<string | undefined>;
       selectOutputDirectory: () => Promise<string | undefined>;
       validateVideos: (paths: string[]) => Promise<boolean>;
       getVideoInfo: (path: string) => Promise<any>;
@@ -134,6 +134,31 @@ interface YouTubeRecentVideo {
   publishedAt?: string | null;
   thumbnailUrl?: string | null;
   url?: string | null;
+}
+
+const DEFAULT_OUTPUT_NAME_TEMPLATE = 'merged_video_{timestamp}';
+
+function sanitizeOutputFileName(name: string): string {
+  const trimmed = (name || '').trim();
+  const withoutInvalidChars = trimmed.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+  const withoutTrailingDots = withoutInvalidChars.replace(/[. ]+$/g, '');
+  return withoutTrailingDots || 'merged_video';
+}
+
+function buildOutputFileName(template: string): string {
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const time = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+  const timestamp = `${date}_${time}`;
+
+  const normalizedTemplate = (template || DEFAULT_OUTPUT_NAME_TEMPLATE)
+    .replaceAll('{date}', date)
+    .replaceAll('{time}', time)
+    .replaceAll('{timestamp}', timestamp);
+
+  const hasExtension = /\.[a-z0-9]{2,8}$/i.test(normalizedTemplate.trim());
+  const safeName = sanitizeOutputFileName(normalizedTemplate);
+  return hasExtension ? safeName : `${safeName}.mp4`;
 }
 
 type AppTheme = 'classic' | 'olive-dark' | 'midnight-blue' | 'sand-light';
@@ -277,6 +302,7 @@ const App: React.FC = () => {
   const [selectedYtPresetName, setSelectedYtPresetName] = useState<string>('');
   const [appTheme, setAppTheme] = useState<AppTheme>('classic');
   const [defaultOutputDir, setDefaultOutputDir] = useState<string>('');
+  const [outputNameTemplate, setOutputNameTemplate] = useState<string>(DEFAULT_OUTPUT_NAME_TEMPLATE);
   const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
   const lastTrackedTheme = useRef<AppTheme | null>(null);
 
@@ -365,6 +391,9 @@ const App: React.FC = () => {
 
         if (typeof settings?.defaultOutputDir === 'string') {
           setDefaultOutputDir(settings.defaultOutputDir);
+        }
+        if (typeof settings?.outputNameTemplate === 'string' && settings.outputNameTemplate.trim()) {
+          setOutputNameTemplate(settings.outputNameTemplate);
         }
       } catch {
         // noop
@@ -996,17 +1025,20 @@ const App: React.FC = () => {
     if (!defaultOutputDir) return '';
     const separator = defaultOutputDir.includes('\\') ? '\\' : '/';
     const safeBaseDir = defaultOutputDir.replace(/[\\/]+$/, '');
-    return `${safeBaseDir}${separator}merged_video_${Date.now()}.mp4`;
+    return `${safeBaseDir}${separator}${buildOutputFileName(outputNameTemplate)}`;
   };
 
   const suggestedOutputPath = useMemo(() => {
     if (outputPath) return outputPath;
     return buildDefaultOutputPath();
-  }, [outputPath, defaultOutputDir]);
+  }, [outputPath, defaultOutputDir, outputNameTemplate]);
 
   // --- Output & Merge ---
   const handleSelectOutput = async () => {
-    const path = await window.electronAPI.selectSaveLocation(defaultOutputDir || undefined);
+    const path = await window.electronAPI.selectSaveLocation(
+      defaultOutputDir || undefined,
+      buildOutputFileName(outputNameTemplate)
+    );
     if (path) {
       setOutputPath(path);
       setStatus(`Output: ${path}`);
@@ -1328,9 +1360,11 @@ const App: React.FC = () => {
               initialTab={dashboardInitialTab}
               appTheme={appTheme}
               defaultOutputDir={defaultOutputDir}
+              outputNameTemplate={outputNameTemplate}
               onStandardizationChange={setStandardization}
               onThemeChange={setAppTheme}
               onDefaultOutputDirChange={setDefaultOutputDir}
+              onOutputNameTemplateChange={setOutputNameTemplate}
               onYouTubeSettingsSync={syncFinalizeYouTubeFromSettings}
               onLogout={handleLogout}
               onLogin={handleGoogleLoginFromDashboard}
@@ -2030,9 +2064,11 @@ interface DashboardPanelProps {
   initialTab: 'general' | 'youtube' | 'ffmpeg' | 'account';
   appTheme: AppTheme;
   defaultOutputDir: string;
+  outputNameTemplate: string;
   onStandardizationChange: (s: { resolution: string; fps: string }) => void;
   onThemeChange: (theme: AppTheme) => void;
   onDefaultOutputDirChange: (path: string) => void;
+  onOutputNameTemplateChange: (value: string) => void;
   onYouTubeSettingsSync: (payload: {
     defaults: Record<string, any>;
     presets: YouTubeQuickPreset[];
@@ -2071,12 +2107,13 @@ const UserAvatar: React.FC<UserAvatarProps> = ({ user, size }) => {
 };
 
 const DashboardPanel: React.FC<DashboardPanelProps> = ({
-  isLoggedIn, googleUser, ffmpegDetails, standardization, initialTab, appTheme, defaultOutputDir,
-  onStandardizationChange, onThemeChange, onDefaultOutputDirChange, onYouTubeSettingsSync, onLogout, onLogin
+  isLoggedIn, googleUser, ffmpegDetails, standardization, initialTab, appTheme, defaultOutputDir, outputNameTemplate,
+  onStandardizationChange, onThemeChange, onDefaultOutputDirChange, onOutputNameTemplateChange, onYouTubeSettingsSync, onLogout, onLogin
 }) => {
   const [settings, setSettings] = useState<any>({
     appTheme: appTheme,
     defaultOutputDir: defaultOutputDir,
+    outputNameTemplate: outputNameTemplate,
     ...YOUTUBE_DEFAULT_SETTINGS,
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -2101,8 +2138,9 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
       ...prev,
       appTheme,
       defaultOutputDir,
+      outputNameTemplate,
     }));
-  }, [appTheme, defaultOutputDir]);
+  }, [appTheme, defaultOutputDir, outputNameTemplate]);
 
   useEffect(() => {
     loadSettings();
@@ -2166,6 +2204,7 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
     onYouTubeSettingsSync({ defaults: settings, presets: ytQuickPresets });
     onThemeChange(normalizeAppTheme(settings.appTheme, appTheme));
     onDefaultOutputDirChange(settings.defaultOutputDir || '');
+    onOutputNameTemplateChange(settings.outputNameTemplate || DEFAULT_OUTPUT_NAME_TEMPLATE);
     onStandardizationChange({
       resolution: settings.defaultResolution || 'original',
       fps: settings.defaultFps || 'original',
@@ -2439,6 +2478,20 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
                 {settings.defaultOutputDir || 'No default folder selected'}
               </div>
             </div>
+
+            <label className="std-label" style={{ marginTop: 12 }}>
+              Output Name Template
+              <input
+                type="text"
+                className="yt-input"
+                value={settings.outputNameTemplate || DEFAULT_OUTPUT_NAME_TEMPLATE}
+                onChange={e => setSettings((prev: any) => ({ ...prev, outputNameTemplate: e.target.value }))}
+                placeholder="merged_video_{timestamp}"
+              />
+              <small style={{ color: 'var(--olive-300)' }}>
+                Tokens: {'{date}'}, {'{time}'}, {'{timestamp}'}
+              </small>
+            </label>
 
             <div className="preview-block" style={{ padding: 12 }}>
               <h3 style={{ marginBottom: 8 }}>Preset Pack</h3>

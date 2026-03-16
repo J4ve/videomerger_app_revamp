@@ -187,5 +187,27 @@ describe('App', () => {
       
       expect(screen.getByText('Save destination')).toBeInTheDocument();
     });
+
+    it('uses output name template for suggested save destination', async () => {
+      mockElectronAPI.getSettings.mockResolvedValue({
+        maxFileSizeMb: 500,
+        defaultOutputDir: 'C:\\Exports',
+        outputNameTemplate: 'final_cut',
+      });
+      mockElectronAPI.selectVideoFiles.mockResolvedValue(['C:\\a.mp4', 'C:\\b.mp4']);
+
+      render(<App />);
+      await skipAuth();
+      fireEvent.click(screen.getByTestId('dropzone'));
+      await waitFor(() => expect(screen.getByText('a.mp4')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Proceed'));
+      await waitFor(() => expect(screen.getByText('Arrange sequence')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Finalize'));
+      await waitFor(() => expect(screen.getByText('Finalize and merge')).toBeInTheDocument());
+
+      expect(screen.getByText('C:\\Exports\\final_cut.mp4')).toBeInTheDocument();
+    });
   });
 });

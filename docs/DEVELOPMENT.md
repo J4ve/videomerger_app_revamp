@@ -460,11 +460,18 @@ After a successful merge, logged-in users see a YouTube upload form:
 ### Dashboard & Settings
 
 Accessible via ⚙ button in the header. Tabs:
-- **General**: Max file size, default resolution/FPS
+- **General**: Max file size, default resolution/FPS, default save folder, and output name template
 - **Presets**: Save/load standardization presets
 - **YouTube**: Default title, description, privacy (requires login)
 - **FFmpeg**: Status, version, path display
 - **Account**: Google account info, sign out
+
+Output name templates support these tokens:
+- `{date}` (YYYY-MM-DD)
+- `{time}` (HH-MM-SS)
+- `{timestamp}` (YYYY-MM-DD_HH-MM-SS)
+
+Example template: `project_merge_{date}` → `project_merge_2026-03-17.mp4`
 
 ### FFmpeg Bundling
 
