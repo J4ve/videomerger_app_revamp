@@ -805,12 +805,10 @@ function setupIPC(): void {
       });
 
       let resolved = false;
-      let authWindow: BrowserWindow | null = null;
       let server: http.Server | null = null;
 
       let oauthTimeout: NodeJS.Timeout | null = setTimeout(() => {
         closeServer();
-        closeAuthWindow();
         resolveOnce({ success: false, error: 'Google sign-in timed out. Please try again.' });
       }, 180000);
 
@@ -824,13 +822,6 @@ function setupIPC(): void {
           oauthTimeout = null;
         }
         resolve(payload);
-      };
-
-      const closeAuthWindow = () => {
-        if (!authWindow || authWindow.isDestroyed()) {
-          return;
-        }
-        authWindow.close();
       };
 
       const closeServer = () => {
@@ -885,7 +876,6 @@ function setupIPC(): void {
             res.writeHead(400, { 'Content-Type': 'text/html' });
             res.end('<html><body><h2>Login canceled or denied.</h2></body></html>');
             closeServer();
-            closeAuthWindow();
             resolveOnce({ success: false, error: `Google OAuth error: ${oauthError}` });
             return;
           }
@@ -911,7 +901,6 @@ function setupIPC(): void {
             });
 
             closeServer();
-            closeAuthWindow();
             resolveOnce({
               success: true,
               user: {
@@ -925,7 +914,6 @@ function setupIPC(): void {
             res.writeHead(400, { 'Content-Type': 'text/html' });
             res.end('<html><body><h2>Login failed. Please try again.</h2></body></html>');
             closeServer();
-            closeAuthWindow();
             resolveOnce({ success: false, error: 'No authorization code received' });
           }
         } catch (err: any) {
@@ -933,75 +921,26 @@ function setupIPC(): void {
           res.writeHead(500, { 'Content-Type': 'text/html' });
           res.end('<html><body><h2>Login error. Please try again.</h2></body></html>');
           closeServer();
-          closeAuthWindow();
           resolveOnce({ success: false, error: err?.message || 'OAuth callback error' });
         }
       });
 
       server.on('error', (err: any) => {
         console.error('[Auth][Main] OAuth callback server error:', err?.message || err);
-        closeAuthWindow();
         resolveOnce({ success: false, error: `OAuth callback server error: ${err?.message || 'unknown error'}` });
       });
 
       server.listen(callbackPort, redirectUrl.hostname, () => {
         console.log(`[Auth][Main] OAuth callback server listening on ${callbackOrigin}${callbackPath}`);
 
-        try {
-          authWindow = new BrowserWindow({
-            width: 600,
-            height: 700,
-            parent: mainWindow || undefined,
-            modal: true,
-            autoHideMenuBar: true,
-            icon: resolveAppIconPath(),
-            webPreferences: { nodeIntegration: false, contextIsolation: true },
+        void shell.openExternal(authUrl)
+          .then(() => {
+            console.log('[Auth][Main] Opened OAuth in external browser');
+          })
+          .catch((openErr: any) => {
+            closeServer();
+            resolveOnce({ success: false, error: `Failed to open OAuth page: ${openErr?.message || 'unknown error'}` });
           });
-        } catch (err: any) {
-          console.error('[Auth][Main] Failed to create OAuth window:', err?.message || err);
-          void shell.openExternal(authUrl)
-            .then(() => {
-              console.log('[Auth][Main] Opened OAuth in external browser fallback');
-            })
-            .catch((openErr: any) => {
-              closeServer();
-              resolveOnce({ success: false, error: `Failed to open OAuth page: ${openErr?.message || 'unknown error'}` });
-            });
-          return;
-        }
-
-        authWindow.setMenuBarVisibility(false);
-
-        authWindow.webContents.on('did-fail-load', async (_event, code, description) => {
-          console.error('[Auth][Main] OAuth window failed to load:', code, description);
-          try {
-            await shell.openExternal(authUrl);
-            console.log('[Auth][Main] Opened OAuth in external browser after in-app load failure');
-          } catch (err: any) {
-            closeServer();
-            closeAuthWindow();
-            resolveOnce({ success: false, error: `OAuth window failed to load: ${description}` });
-          }
-        });
-
-        authWindow.loadURL(authUrl).catch(async (err: any) => {
-          console.error('[Auth][Main] OAuth loadURL error:', err?.message || err);
-          try {
-            await shell.openExternal(authUrl);
-            console.log('[Auth][Main] Opened OAuth in external browser after loadURL error');
-          } catch {
-            closeServer();
-            closeAuthWindow();
-            resolveOnce({ success: false, error: err?.message || 'Failed to open OAuth URL' });
-          }
-        });
-
-        authWindow.on('closed', () => {
-          console.log('[Auth][Main] OAuth window closed by user');
-          authWindow = null;
-          closeServer();
-          resolveOnce({ success: false, error: 'Google sign-in was canceled before completion.' });
-        });
       });
     });
   });
