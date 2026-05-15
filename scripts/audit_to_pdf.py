@@ -26,7 +26,11 @@ AUDIT_MD = ROOT / 'docs' / 'AUDIT.md'
 CSS = """
 @page {
   size: Letter;
-  margin: 18mm 16mm 18mm 16mm;
+  /* Top margin is larger than the rest so a header banner can be
+     overlaid on every page after the PDF is generated (e.g. when
+     stamping the school letterhead in Word, Acrobat, or a separate
+     image editor). Adjust the first value if the banner size changes. */
+  margin: 40mm 16mm 18mm 16mm;
 }
 body {
   font-family: 'Arial Narrow', 'Liberation Sans Narrow', 'Helvetica Neue', Arial, sans-serif;
