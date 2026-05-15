@@ -35,6 +35,13 @@ body {
   line-height: 1.45;
   color: #1f1f1f;
 }
+.cspc-header {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 0 0 14pt 0;
+}
 .cover-meta {
   line-height: 1.55;
   margin: 6pt 0 12pt;
@@ -196,11 +203,11 @@ def render_pdf(md_path: Path, pdf_path: Path) -> None:
         body=body_html,
     )
 
-    with tempfile.NamedTemporaryFile(
-        mode='w', suffix='.html', delete=False, encoding='utf-8',
-    ) as fh:
-        fh.write(html)
-        html_path = Path(fh.name)
+    # Render the temp HTML next to AUDIT.md so relative <img src="assets/...">
+    # references in the source resolve against the same docs/ directory.
+    # Using a leading dot keeps the temp file out of casual directory listings.
+    html_path = md_path.parent / f'.audit_render_{os.getpid()}.html'
+    html_path.write_text(html, encoding='utf-8')
 
     try:
         chromium = find_chromium()
