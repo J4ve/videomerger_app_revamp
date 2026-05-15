@@ -33,10 +33,21 @@
    npm install
    ```
 
-5. **Install FFmpeg** (for video processing)
+5. **FFmpeg** (for video processing)
+
+   For the **Electron desktop app**, no separate FFmpeg install is needed.
+   `npm install` automatically pulls `ffmpeg-static` + `ffprobe-static`
+   (devDependencies) and the `postinstall` hook (`scripts/install-ffmpeg.js`)
+   copies the binaries into `resources/ffmpeg/`. The app's bundled-binary
+   detection picks them up at boot.
+
+   For the **legacy Flask web app**, a system-wide FFmpeg install is still
+   recommended:
    - **macOS**: `brew install ffmpeg`
    - **Ubuntu/Debian**: `sudo apt-get install ffmpeg`
    - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) or use `winget install ffmpeg`
+
+   See [ffmpeg-bundling.md](./ffmpeg-bundling.md) for full detection priority and packaged-installer notes.
 
 ## Project Structure
 
@@ -330,9 +341,26 @@ docker-compose logs -f web
 pip install -e .
 ```
 
-### Issue: FFmpeg Not Found
+### Issue: FFmpeg Not Found (red banner in app)
 
-**Solution:** Install FFmpeg for your OS (see setup section)
+**Most common cause:** `npm install` was interrupted before the `postinstall`
+hook ran, or `scripts/install-ffmpeg.js` failed silently.
+
+**Solution:**
+```bash
+# Re-run the postinstall step manually
+node scripts/install-ffmpeg.js
+
+# Verify the binaries landed
+ls resources/ffmpeg/
+# Should show ffmpeg.exe and ffprobe.exe (Windows) or ffmpeg/ffprobe (other OS)
+
+# Kill and restart the dev loop so Electron picks them up
+# (electronmon does not auto-reload on resources/ changes)
+```
+
+If `node_modules/ffmpeg-static` is missing entirely, re-run `npm install`.
+If you prefer a system install for any reason (e.g. ARM Mac), `brew install ffmpeg` / `apt-get install ffmpeg` / `winget install ffmpeg` works as a fallback — the app probes the system PATH if both bundled and `ffmpeg-static` paths fail.
 
 ### Issue: Port Already in Use
 
@@ -386,11 +414,44 @@ The desktop app uses **Electron** (main process) + **React** (renderer) + **Pyth
 ### Running the Desktop App
 
 ```bash
-npm install
-npm run dev         # Run renderer (Vite) + main (Electron) concurrently
+npm install         # Also fetches FFmpeg binaries via postinstall hook
+npm run dev         # Run renderer (Vite) + tsc watch (main) + electronmon concurrently
 npm run test        # Run vitest
 npm run build       # Production build
 ```
+
+`npm run dev` orchestrates three concurrent processes via `concurrently`:
+
+| Stream  | Tool         | Behavior                                              |
+|---------|--------------|-------------------------------------------------------|
+| vite    | `vite`       | Renderer HMR on port 3000                             |
+| tsc     | `tsc -w`     | Watches `main/` + `core/`, emits to `dist/main/`     |
+| electron| `electronmon`| Boots Electron, restarts on `dist/main/main.js` change |
+
+`wait-on` blocks `electronmon` until `dist/main/main.js` exists and the
+Vite dev server is reachable, so the first launch is deterministic.
+
+### Per-Clip Edits (Phase 1, arrange step)
+
+Each clip in the arrange step exposes a **tune** button that opens an
+inline edit panel with sliders/controls for:
+
+- Trim start / trim end (seconds, bounded by clip duration)
+- Aspect ratio preset (`original`, `16:9`, `9:16`, `1:1`, `4:5`, `4:3`, custom W:H)
+- Optional crop rectangle (`x`, `y`, `width`, `height` in pixels)
+- Per-clip audio volume (0–2×)
+- Brightness / contrast / saturation
+
+Edits are keyed by file path (duplicate clips share edit state) and serialized
+into a temp JSON file passed to the Python CLI as `--clips-json`. The Python
+side builds a per-clip filter chain (`setpts` → `crop` → `scale+pad` →
+`fps` → `eq` → `format=yuv420p` for video; `asetpts` → `aformat` → `volume`
+for audio) and uses input-level `-ss` / `-t` for trim. Clips without edits
+use the original normalize-and-concat pipeline unchanged.
+
+See `core/interfaces/IVideoProcessing.ts` (`IClipEdit`, `IVideoMergeOptions.clipEdits`)
+and `src/videomerger/video_processor_cli.py` (`_build_clip_video_chain`,
+`_build_clip_audio_chain`) for implementation details.
 
 ### 3-Step Wizard
 
@@ -482,9 +543,11 @@ Example template: `project_merge_{date}` → `project_merge_2026-03-17.mp4`
 
 ### FFmpeg Bundling
 
-The app is currently packaged with **FFmpeg version 2026-03-12-git-9dc44b43b2-full_build-www.gyan.dev**.
+For **development** (`npm install` + `npm run dev`), FFmpeg is fetched automatically from `ffmpeg-static` / `ffprobe-static` and copied into `resources/ffmpeg/` by `scripts/install-ffmpeg.js` (postinstall hook). No manual download required.
 
-See [ffmpeg-bundling.md](./ffmpeg-bundling.md) for details on including FFmpeg binaries with the installer.
+For **packaged installers** (`docker compose run builder` or `npm run package`), drop a Windows static `ffmpeg.zip` (e.g. gyan.dev "ffmpeg-release-essentials") at the repo root. The docker builder unpacks it into `resources/ffmpeg/` before the electron-builder run. The packaged `.exe` is built with **FFmpeg version 2026-03-12-git-9dc44b43b2-full_build-www.gyan.dev** when that bundle is provided.
+
+See [ffmpeg-bundling.md](./ffmpeg-bundling.md) for the full bundling, detection-priority, and troubleshooting reference.
 
 ### TypeScript Tests
 

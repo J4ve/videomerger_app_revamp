@@ -108,12 +108,16 @@ container.register('VideoRepository', () => new CloudVideoRepository(config), tr
 
 - Node.js 18+
 - Python 3.8+
-- FFmpeg installed on system
+- FFmpeg **not required** for development — `npm install` fetches the
+  `ffmpeg-static` / `ffprobe-static` binaries (devDependencies) and the
+  `postinstall` hook copies them into `resources/ffmpeg/` so the app's
+  bundled-binary check resolves them. A system-wide install still works
+  as a fallback.
 
 ## Installation
 
 ```bash
-npm install
+npm install                       # also auto-installs FFmpeg for dev
 pip install -r requirements.txt
 ```
 
@@ -123,7 +127,18 @@ pip install -r requirements.txt
 npm run dev
 ```
 
-This starts Vite dev server (port 3000) and Electron in development mode.
+Runs three concurrent processes:
+
+| Stream  | Tool         | What it does                                    |
+|---------|--------------|-------------------------------------------------|
+| vite    | `vite`       | Renderer dev server on port 3000 with HMR       |
+| tsc     | `tsc -w`     | Watches `main/` + `core/`, emits to `dist/main/`|
+| electron| `electronmon`| Boots Electron, restarts on `dist/main/` change |
+
+`wait-on` gates `electronmon` until `dist/main/main.js` exists and port
+3000 is live, so the first launch sequences cleanly. Renderer edits
+hot-reload; main-process edits trigger a `tsc` rebuild and a single
+Electron restart.
 
 ## Building
 
