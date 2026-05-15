@@ -360,8 +360,16 @@ def _build_clip_video_chain(edit, target_w, target_h, target_fps):
     return ','.join(filters)
 
 
-def _build_clip_audio_chain(edit, target_audio_rate):
-    """Build the audio filter chain string for one clip."""
+def _build_clip_audio_chain(edit, target_audio_rate, loudnorm=None):
+    """Build the audio filter chain string for one clip.
+
+    When ``loudnorm`` is a dict with ``enabled: True`` we append the
+    EBU R128 ``loudnorm`` filter with the supplied target LUFS / true
+    peak / loudness range. This is the single-pass form — adequate
+    for the "fast merge" workflow at the cost of slightly less
+    accurate LUFS targeting compared to a measure-then-normalize
+    two-pass.
+    """
     filters = []
 
     # Trim handled by input-level -ss/-t. Filter only rebases PTS.
@@ -382,6 +390,28 @@ def _build_clip_audio_chain(edit, target_audio_rate):
         volume = max(0.0, min(volume, 8.0))
         filters.append(f'volume={volume:.3f}')
 
+    if loudnorm and loudnorm.get('enabled'):
+        try:
+            target_lufs = float(loudnorm.get('targetLufs', -16) or -16)
+        except (TypeError, ValueError):
+            target_lufs = -16.0
+        try:
+            true_peak = float(loudnorm.get('truePeak', -1.5) or -1.5)
+        except (TypeError, ValueError):
+            true_peak = -1.5
+        try:
+            lra = float(loudnorm.get('loudnessRange', 11) or 11)
+        except (TypeError, ValueError):
+            lra = 11.0
+        # Clamp to ffmpeg-supported ranges so a malformed UI input
+        # does not crash the filter graph.
+        target_lufs = max(-70.0, min(-5.0, target_lufs))
+        true_peak = max(-9.0, min(0.0, true_peak))
+        lra = max(1.0, min(50.0, lra))
+        filters.append(
+            f'loudnorm=I={target_lufs:.2f}:TP={true_peak:.2f}:LRA={lra:.2f}'
+        )
+
     return ','.join(filters)
 
 
@@ -393,6 +423,7 @@ def merge_videos(
     overwrite=False,
     disable_hwaccel=True,
     clip_edits=None,
+    loudnorm=None,
 ):
     """Normalize clips and concatenate them into a single output video."""
     if len(input_paths) < 2:
@@ -464,7 +495,9 @@ def merge_videos(
             filter_v = _build_clip_video_chain(
                 edit, target_width, target_height, target_fps
             )
-            filter_a_chain = _build_clip_audio_chain(edit, target_audio_rate)
+            filter_a_chain = _build_clip_audio_chain(
+                edit, target_audio_rate, loudnorm=loudnorm,
+            )
 
             cmd = ['ffmpeg', '-y', '-hide_banner', '-nostdin']
             if disable_hwaccel:
@@ -642,6 +675,29 @@ def main():
             '{"clips": [{"path": "...", "edits": {...}}, ...]}'
         ),
     )
+    parser.add_argument(
+        '--loudnorm',
+        action='store_true',
+        help='Apply EBU R128 audio loudness normalization to every clip',
+    )
+    parser.add_argument(
+        '--loudnorm-target',
+        type=float,
+        default=-16.0,
+        help='Integrated loudness target in LUFS (default -16, streaming-friendly)',
+    )
+    parser.add_argument(
+        '--loudnorm-true-peak',
+        type=float,
+        default=-1.5,
+        help='True peak ceiling in dBTP (default -1.5)',
+    )
+    parser.add_argument(
+        '--loudnorm-lra',
+        type=float,
+        default=11.0,
+        help='Target loudness range in LU (default 11)',
+    )
 
     args = parser.parse_args()
 
@@ -667,6 +723,16 @@ def main():
             sys.exit(1)
 
         clip_edits = _load_clip_edits(args.clips_json, args.inputs)
+        loudnorm = (
+            {
+                'enabled': True,
+                'targetLufs': args.loudnorm_target,
+                'truePeak': args.loudnorm_true_peak,
+                'loudnessRange': args.loudnorm_lra,
+            }
+            if args.loudnorm
+            else None
+        )
         success = merge_videos(
             args.inputs,
             args.output,
@@ -675,6 +741,7 @@ def main():
             args.overwrite,
             disable_hwaccel=not args.allow_hwaccel,
             clip_edits=clip_edits,
+            loudnorm=loudnorm,
         )
         sys.exit(0 if success else 1)
 

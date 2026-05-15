@@ -96,6 +96,22 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
         args.push('--clips-json', clipsJsonPath);
       }
 
+      if (options.loudnorm?.enabled) {
+        args.push('--loudnorm');
+        if (typeof options.loudnorm.targetLufs === 'number') {
+          args.push('--loudnorm-target', String(options.loudnorm.targetLufs));
+        }
+        if (typeof options.loudnorm.truePeak === 'number') {
+          args.push(
+            '--loudnorm-true-peak',
+            String(options.loudnorm.truePeak),
+          );
+        }
+        if (typeof options.loudnorm.loudnessRange === 'number') {
+          args.push('--loudnorm-lra', String(options.loudnorm.loudnessRange));
+        }
+      }
+
       const result = await this.executePythonScript(args, onProgress, onProgress);
 
       if (result.exitCode === 0) {

@@ -140,6 +140,59 @@ describe('PythonFFmpegAdapter clipEdits handling', () => {
     expect(fs.existsSync(capturedJsonPath!)).toBe(false);
   });
 
+  it('forwards loudnorm flags when loudnorm.enabled is true', async () => {
+    const spawner = createMockSpawner();
+    const adapter = new PythonFFmpegAdapter(spawner, createConfig());
+
+    await adapter.mergeVideos({
+      inputPaths: ['a.mp4', 'b.mp4'],
+      outputPath: 'out.mp4',
+      loudnorm: {
+        enabled: true,
+        targetLufs: -14,
+        truePeak: -1,
+        loudnessRange: 7,
+      },
+    });
+
+    const callArgs = (spawner.spawn as any).mock.calls[0][1] as string[];
+    expect(callArgs).toContain('--loudnorm');
+    expect(callArgs).toContain('--loudnorm-target');
+    expect(callArgs[callArgs.indexOf('--loudnorm-target') + 1]).toBe('-14');
+    expect(callArgs).toContain('--loudnorm-true-peak');
+    expect(callArgs[callArgs.indexOf('--loudnorm-true-peak') + 1]).toBe('-1');
+    expect(callArgs).toContain('--loudnorm-lra');
+    expect(callArgs[callArgs.indexOf('--loudnorm-lra') + 1]).toBe('7');
+  });
+
+  it('omits loudnorm flags when loudnorm is undefined', async () => {
+    const spawner = createMockSpawner();
+    const adapter = new PythonFFmpegAdapter(spawner, createConfig());
+
+    await adapter.mergeVideos({
+      inputPaths: ['a.mp4', 'b.mp4'],
+      outputPath: 'out.mp4',
+    });
+
+    const callArgs = (spawner.spawn as any).mock.calls[0][1] as string[];
+    expect(callArgs).not.toContain('--loudnorm');
+    expect(callArgs).not.toContain('--loudnorm-target');
+  });
+
+  it('omits loudnorm flags when loudnorm.enabled is false', async () => {
+    const spawner = createMockSpawner();
+    const adapter = new PythonFFmpegAdapter(spawner, createConfig());
+
+    await adapter.mergeVideos({
+      inputPaths: ['a.mp4', 'b.mp4'],
+      outputPath: 'out.mp4',
+      loudnorm: { enabled: false, targetLufs: -16 },
+    });
+
+    const callArgs = (spawner.spawn as any).mock.calls[0][1] as string[];
+    expect(callArgs).not.toContain('--loudnorm');
+  });
+
   it('still cleans up the tempfile when the spawn rejects', async () => {
     let capturedJsonPath: string | undefined;
     const spawner: IProcessSpawner = {

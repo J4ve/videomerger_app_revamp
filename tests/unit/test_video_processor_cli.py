@@ -178,6 +178,75 @@ class TestBuildClipAudioChain:
 
 
 @pytest.mark.unit
+class TestLoudnorm:
+    def test_default_audio_chain_has_no_loudnorm(self):
+        chain = vp._build_clip_audio_chain({}, 48000)
+        assert 'loudnorm' not in chain
+
+    def test_disabled_loudnorm_is_noop(self):
+        chain = vp._build_clip_audio_chain(
+            {}, 48000, loudnorm={'enabled': False},
+        )
+        assert 'loudnorm' not in chain
+
+    def test_enabled_loudnorm_appends_filter_with_defaults(self):
+        chain = vp._build_clip_audio_chain(
+            {}, 48000, loudnorm={'enabled': True},
+        )
+        assert 'loudnorm=I=-16.00:TP=-1.50:LRA=11.00' in chain
+
+    def test_enabled_loudnorm_custom_targets(self):
+        chain = vp._build_clip_audio_chain(
+            {}, 48000,
+            loudnorm={
+                'enabled': True,
+                'targetLufs': -23,
+                'truePeak': -2,
+                'loudnessRange': 7,
+            },
+        )
+        assert 'loudnorm=I=-23.00:TP=-2.00:LRA=7.00' in chain
+
+    def test_loudnorm_clamps_out_of_range_values(self):
+        chain = vp._build_clip_audio_chain(
+            {}, 48000,
+            loudnorm={
+                'enabled': True,
+                'targetLufs': 50,        # absurdly high -> clamp to -5
+                'truePeak': 10,          # above 0 -> clamp to 0
+                'loudnessRange': 9999,   # above 50 -> clamp to 50
+            },
+        )
+        assert 'loudnorm=I=-5.00:TP=0.00:LRA=50.00' in chain
+
+    def test_loudnorm_handles_malformed_inputs(self):
+        chain = vp._build_clip_audio_chain(
+            {}, 48000,
+            loudnorm={
+                'enabled': True,
+                'targetLufs': 'banana',
+                'truePeak': None,
+                'loudnessRange': None,
+            },
+        )
+        # Fall back to default LUFS / TP / LRA when inputs are malformed
+        assert 'loudnorm=I=-16.00:TP=-1.50:LRA=11.00' in chain
+
+    def test_loudnorm_composes_with_volume_and_trim(self):
+        chain = vp._build_clip_audio_chain(
+            {'trimStart': 1.5, 'volume': 0.5},
+            48000,
+            loudnorm={'enabled': True},
+        )
+        # Order matters: asetpts -> aformat -> volume -> loudnorm
+        i_pts = chain.index('asetpts')
+        i_fmt = chain.index('aformat')
+        i_vol = chain.index('volume=')
+        i_loud = chain.index('loudnorm')
+        assert i_pts < i_fmt < i_vol < i_loud
+
+
+@pytest.mark.unit
 class TestLoadClipEdits:
     def test_missing_path_returns_none(self):
         assert vp._load_clip_edits(None, ['a.mp4']) is None

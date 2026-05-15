@@ -282,6 +282,10 @@ const App: React.FC = () => {
   const [standardization, setStandardization] = useState<{
     resolution: string; fps: string;
   }>({ resolution: 'original', fps: 'original' });
+
+  // Phase 2: audio loudness normalization (global toggle, EBU R128 single-pass).
+  const [loudnormEnabled, setLoudnormEnabled] = useState<boolean>(false);
+  const [loudnormTarget, setLoudnormTarget] = useState<number>(-16);
   const [customResolution, setCustomResolution] = useState<string>('');
   const [customFps, setCustomFps] = useState<string>('30');
 
@@ -1144,6 +1148,9 @@ const App: React.FC = () => {
       outputPath: resolvedOutputPath,
       standardization: effectiveStandardization,
       ...(hasAnyEdits ? { clipEdits: clipEditsPayload } : {}),
+      ...(loudnormEnabled
+        ? { loudnorm: { enabled: true, targetLufs: loudnormTarget } }
+        : {}),
     });
 
     if (mergeCancelledRef.current) {
@@ -2046,6 +2053,41 @@ const App: React.FC = () => {
                               />
                             </label>
                           )}
+
+                          <div className="loudnorm-block" style={{ marginTop: 14 }}>
+                            <label className="loudnorm-toggle">
+                              <input
+                                type="checkbox"
+                                checked={loudnormEnabled}
+                                onChange={(e) => setLoudnormEnabled(e.target.checked)}
+                                disabled={isMerging}
+                              />
+                              <span>
+                                Normalize audio loudness across all clips (EBU R128)
+                              </span>
+                            </label>
+                            {loudnormEnabled && (
+                              <label
+                                className="advanced-standardization-field"
+                                style={{ marginTop: 8 }}
+                              >
+                                Target loudness (LUFS)
+                                <select
+                                  className="std-select"
+                                  value={loudnormTarget}
+                                  onChange={(e) =>
+                                    setLoudnormTarget(Number(e.target.value))
+                                  }
+                                  disabled={isMerging}
+                                >
+                                  <option value={-14}>-14 LUFS (YouTube / Spotify)</option>
+                                  <option value={-16}>-16 LUFS (Apple Podcasts, streaming default)</option>
+                                  <option value={-18}>-18 LUFS (AES streaming)</option>
+                                  <option value={-23}>-23 LUFS (EBU R128 broadcast)</option>
+                                </select>
+                              </label>
+                            )}
+                          </div>
                         </details>
                       </div>
 

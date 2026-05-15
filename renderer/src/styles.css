@@ -1689,6 +1689,31 @@ body {
   text-decoration: underline;
 }
 
+/* ---------- Loudnorm toggle (Phase 2) ---------- */
+.loudnorm-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: var(--olive-200);
+  cursor: pointer;
+}
+
+.loudnorm-toggle input[type='checkbox'] {
+  accent-color: var(--blue-500);
+  width: 16px;
+  height: 16px;
+}
+
+.loudnorm-toggle input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+
+.loudnorm-block {
+  border-top: 1px solid var(--olive-700);
+  padding-top: 12px;
+}
+
 /* ---------- ClipEditPanel (Phase 1: per-clip edits) ---------- */
 .clip-edit-panel {
   background: var(--olive-850);

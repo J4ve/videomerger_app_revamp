@@ -88,6 +88,22 @@ export interface IClipEdit {
 }
 
 /**
+ * Audio loudness normalization options (EBU R128 / ITU-R BS.1770).
+ * When enabled, each clip is loudness-normalized in the normalize pass
+ * so concatenated output has consistent perceived loudness across clips.
+ */
+export interface ILoudnessNormalization {
+  /** Master switch. Defaults to false (no loudnorm applied). */
+  enabled: boolean;
+  /** Integrated loudness target in LUFS. EBU R128 broadcast = -23, streaming platforms ~ -14 to -16. Default -16. */
+  targetLufs?: number;
+  /** True peak ceiling in dBTP. Default -1.5. */
+  truePeak?: number;
+  /** Loudness range in LU. Default 11. */
+  loudnessRange?: number;
+}
+
+/**
  * Video merge options
  */
 export interface IVideoMergeOptions {
@@ -101,6 +117,8 @@ export interface IVideoMergeOptions {
    * Length must match inputPaths.length when provided.
    */
   clipEdits?: IClipEdit[];
+  /** Global audio loudness normalization applied to all clips. */
+  loudnorm?: ILoudnessNormalization;
 }
 
 /**

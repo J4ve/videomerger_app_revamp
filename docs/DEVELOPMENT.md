@@ -453,6 +453,36 @@ See `core/interfaces/IVideoProcessing.ts` (`IClipEdit`, `IVideoMergeOptions.clip
 and `src/videomerger/video_processor_cli.py` (`_build_clip_video_chain`,
 `_build_clip_audio_chain`) for implementation details.
 
+### Audio Loudness Normalization (Phase 2, advanced settings)
+
+The advanced settings panel exposes a single **Normalize audio loudness
+across all clips (EBU R128)** toggle. When enabled, every clip in the
+normalize pass gets an `loudnorm=I=<target>:TP=<peak>:LRA=<range>`
+filter appended to its audio chain.
+
+This is the single-pass form of `loudnorm` — adequate for the project's
+"fast merge" workflow. Two-pass measure-then-normalize would be more
+accurate but doubles processing time per clip; we trade some LUFS
+precision for the speed contract the panel asked us to keep.
+
+Available LUFS targets in the UI:
+
+| Preset | Use case |
+|--------|----------|
+| -14 LUFS | YouTube, Spotify, Apple Music typical loudness |
+| -16 LUFS | Apple Podcasts and streaming default (also the app default) |
+| -18 LUFS | AES streaming recommendation |
+| -23 LUFS | EBU R128 broadcast loudness |
+
+The setting is opt-in and global (applies uniformly to all clips); per-clip
+volume adjustments from the Phase 1 edit panel still run before
+`loudnorm`, so a user can pre-shape relative levels and let `loudnorm`
+land the final target.
+
+Interface: `ILoudnessNormalization` on `IVideoMergeOptions.loudnorm`.
+CLI: `--loudnorm` (master) + `--loudnorm-target` / `--loudnorm-true-peak`
+/ `--loudnorm-lra` overrides.
+
 ### 3-Step Wizard
 
 | Step | Name | Description |
