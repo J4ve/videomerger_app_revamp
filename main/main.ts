@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, safeStorage } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
@@ -25,6 +25,103 @@ import {
 let mainWindow: BrowserWindow | null = null;
 const store = new Store();
 
+/**
+ * Encrypted-at-rest wrapper around the Google auth blob in electron-store.
+ *
+ * Previously the OAuth access + refresh tokens were written to the JSON
+ * config file in clear text, which meant anyone with read access to the
+ * user's profile directory (including loosely-permissioned backup tools)
+ * could exfiltrate them. We now encrypt the entire `googleAuth` payload
+ * through `safeStorage`, which delegates to the OS keychain (DPAPI on
+ * Windows, Keychain on macOS, libsecret on Linux). Plain reads from
+ * older installs are migrated transparently on first access.
+ *
+ * The non-secret `user` profile (name, email, picture) is still stored
+ * unencrypted so the UI can display it without unlocking the keychain.
+ */
+const AUTH_KEY = 'googleAuth';
+const AUTH_PROFILE_KEY = 'googleAuthProfile';
+const AUTH_SECRET_KEY = 'googleAuthSecret';
+
+interface GoogleAuthRecord {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+  user: {
+    id?: string;
+    name?: string;
+    email?: string;
+    picture?: string;
+  };
+}
+
+function safeStorageReady(): boolean {
+  try {
+    return safeStorage.isEncryptionAvailable();
+  } catch {
+    return false;
+  }
+}
+
+function readGoogleAuth(): GoogleAuthRecord | undefined {
+  // Newer encrypted format: { encrypted: base64, profile: {...} }
+  const profile = store.get(AUTH_PROFILE_KEY) as GoogleAuthRecord['user'] | undefined;
+  const encrypted = store.get(AUTH_SECRET_KEY) as string | undefined;
+  if (profile && encrypted && safeStorageReady()) {
+    try {
+      const buf = Buffer.from(encrypted, 'base64');
+      const json = safeStorage.decryptString(buf);
+      const secret = JSON.parse(json) as {
+        accessToken: string;
+        refreshToken?: string;
+        expiresAt: number;
+      };
+      return { ...secret, user: profile };
+    } catch (err) {
+      console.error('[Auth] Failed to decrypt stored auth; clearing.', err);
+      clearGoogleAuth();
+      return undefined;
+    }
+  }
+
+  // Legacy unencrypted format: migrate on read so older installs upgrade
+  // on the next launch without forcing a re-login.
+  const legacy = store.get(AUTH_KEY) as GoogleAuthRecord | undefined;
+  if (legacy && legacy.accessToken) {
+    writeGoogleAuth(legacy);
+    store.delete(AUTH_KEY);
+    console.log('[Auth] Migrated unencrypted Google auth to safeStorage.');
+    return legacy;
+  }
+  return undefined;
+}
+
+function writeGoogleAuth(record: GoogleAuthRecord): void {
+  if (!safeStorageReady()) {
+    console.warn(
+      '[Auth] safeStorage unavailable; falling back to unencrypted store. ' +
+      'On Linux this can happen when no keyring service is running.',
+    );
+    store.set(AUTH_KEY, record);
+    return;
+  }
+  const secret = JSON.stringify({
+    accessToken: record.accessToken,
+    refreshToken: record.refreshToken,
+    expiresAt: record.expiresAt,
+  });
+  const encrypted = safeStorage.encryptString(secret).toString('base64');
+  store.set(AUTH_PROFILE_KEY, record.user);
+  store.set(AUTH_SECRET_KEY, encrypted);
+  store.delete(AUTH_KEY);
+}
+
+function clearGoogleAuth(): void {
+  store.delete(AUTH_KEY);
+  store.delete(AUTH_PROFILE_KEY);
+  store.delete(AUTH_SECRET_KEY);
+}
+
 if (
   process.platform === 'win32' &&
   process.env.VIDEOMERGER_FORCE_SOFTWARE_RENDERING !== '0'
@@ -48,6 +145,32 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 function registerLocalVideoProtocol(): void {
+  // Delegate file reads to Electron's net.fetch on the underlying file://
+  // URL. Manual ReadableStream construction with createReadStream + toWeb
+  // produced bytes that Chromium's MP4 demuxer rejected with
+  // DEMUXER_ERROR_COULD_NOT_OPEN even on vanilla H.264 + AAC content.
+  // net.fetch handles range-aware streaming natively without the demuxer
+  // confusion.
+  //
+  // The original bug (RangeError: Array buffer allocation failed) came
+  // from passing a no-Range request through to net.fetch, which buffers
+  // the full body. To avoid that we synthesize a small initial range
+  // header when Chromium does not provide one. 256 KiB is enough for
+  // the MP4 demuxer to read ftyp + decide whether moov is present at
+  // the start of the file. If moov is at the end (NVIDIA ShadowPlay,
+  // OBS raw output, etc.), Chromium then issues an end-range request
+  // for the moov atom — keeping the initial chunk tiny avoids buying
+  // a 16 MiB head-start that is then discarded.
+  const INITIAL_CHUNK = 256 * 1024;
+  // Defense-in-depth: only serve files whose extension is in the
+  // supported-video allowlist. Even with contextIsolation, a future
+  // bug that lets the renderer craft arbitrary local-video URLs should
+  // not turn into an arbitrary local-file-read primitive.
+  const ALLOWED_EXTENSIONS = new Set([
+    'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'mpg', 'mpeg',
+    'ts', 'm2ts', 'flv', 'wmv', '3gp', 'ogv', 'vob', 'mxf',
+  ]);
+
   protocol.handle('local-video', async (request) => {
     try {
       const reqUrl = new url.URL(request.url);
@@ -57,32 +180,71 @@ function registerLocalVideoProtocol(): void {
       }
 
       const filePath = decodeURIComponent(encodedPath);
-      if (!fs.existsSync(filePath)) {
+      const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
+      if (!ALLOWED_EXTENSIONS.has(ext)) {
+        return new Response('Unsupported file extension', { status: 400 });
+      }
+      // path.resolve normalises away `..` segments so the requested file
+      // must be expressible as an absolute path that exists on disk; any
+      // attempt to traverse outside of the user-selected directory will
+      // either resolve to a file that doesn't exist or to one whose
+      // extension is filtered above.
+      const resolvedPath = path.resolve(filePath);
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(resolvedPath);
+      } catch {
         return new Response('File not found', { status: 404 });
       }
-
-      const fileUrl = url.pathToFileURL(filePath).toString();
-      // Forward byte-range requests so HTML5 video seeking/switching remains stable.
-      const rangeHeader = request.headers.get('range');
-      if (rangeHeader) {
-        return net.fetch(fileUrl, {
-          headers: {
-            range: rangeHeader,
-          },
-        });
+      if (!stat.isFile()) {
+        return new Response('Not a file', { status: 400 });
       }
 
-      return net.fetch(fileUrl);
-    } catch {
+      const fileUrl = url.pathToFileURL(resolvedPath).toString();
+      const rangeHeader = request.headers.get('range');
+
+      if (rangeHeader) {
+        return net.fetch(fileUrl, { headers: { range: rangeHeader } });
+      }
+
+      // Synthesize a bounded initial range so net.fetch never buffers the
+      // whole file. Chromium's HTML5 <video> will issue follow-up range
+      // requests as it needs more data, which we forward verbatim above.
+      const initialEnd = Math.min(INITIAL_CHUNK - 1, stat.size - 1);
+      return net.fetch(fileUrl, {
+        headers: { range: `bytes=0-${initialEnd}` },
+      });
+    } catch (err) {
+      console.error('[local-video] handler error', err);
       return new Response('Invalid local video request', { status: 400 });
     }
   });
 }
 
 /**
+ * Resolve a binary path from one of the optional dev-dependency packages
+ * (ffmpeg-static, ffprobe-static). Returns null if the package is absent
+ * or its bundled binary cannot be located. Failure is silent so packaged
+ * builds (which exclude these dev-only fallbacks) keep working.
+ */
+function getStaticBinaryPath(pkg: 'ffmpeg-static' | 'ffprobe-static'): string | null {
+  try {
+    const mod = require(pkg);
+    const candidate: unknown = pkg === 'ffmpeg-static' ? mod : (mod as { path?: string }).path;
+    if (typeof candidate === 'string' && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  } catch {
+    // Package not installed in this build target — fine.
+  }
+  return null;
+}
+
+/**
  * Get the path to bundled FFmpeg binary
- * Checks resources/ffmpeg/ directory first (for packaged app)
- * Falls back to system PATH
+ * Checks resources/ffmpeg/ directory first (for packaged app), then the
+ * ffmpeg-static dev dependency (so a plain `npm install` is enough for
+ * contributors), then finally null so the system-PATH check takes over.
  */
 function getBundledFFmpegPath(): string | null {
   const ext = process.platform === 'win32' ? '.exe' : '';
@@ -97,7 +259,7 @@ function getBundledFFmpegPath(): string | null {
       return p;
     }
   }
-  return null;
+  return getStaticBinaryPath('ffmpeg-static');
 }
 
 /**
@@ -123,6 +285,45 @@ function getFFprobeSystemPath(): string | null {
   }
 }
 
+/**
+ * Probe an FFmpeg binary at the given path by running `ffmpeg -version`.
+ * Returns the first line of stdout on success, null on failure. This
+ * bypasses the Python child process entirely so an unhealthy Python
+ * install does not make the FFmpeg indicator falsely report missing.
+ */
+function probeFFmpegBinary(binaryPath: string): string | null {
+  try {
+    const result = execSync(`"${binaryPath}" -version`, {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return result.split('\n')[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the first working FFmpeg binary across bundled / static /
+ * system PATH. Returns the path + first-line version string, or null
+ * when none of the candidates are runnable.
+ */
+function resolveWorkingFFmpeg(): { path: string; version: string } | null {
+  const candidates: (string | null)[] = [
+    getBundledFFmpegPath(),
+    getFFmpegSystemPath(),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const version = probeFFmpegBinary(candidate);
+    if (version) {
+      return { path: candidate, version };
+    }
+  }
+  return null;
+}
+
 function getBundledFFprobePath(): string | null {
   const ext = process.platform === 'win32' ? '.exe' : '';
   const possiblePaths = [
@@ -134,7 +335,7 @@ function getBundledFFprobePath(): string | null {
       return p;
     }
   }
-  return null;
+  return getStaticBinaryPath('ffprobe-static');
 }
 
 function resolveAppIconPath(): string | undefined {
@@ -234,9 +435,40 @@ function getVideoStreamInfo(filePath: string): Promise<{
  * Application configuration
  * Injected into services for framework-agnostic design
  */
+/**
+ * Find a working Python interpreter. On Windows the default `python`
+ * command often resolves to the Microsoft Store shim, which silently
+ * fails when invoked from a child process. This probes common
+ * alternatives (`py`, `python3`, then `python`) and returns the first
+ * that prints a Python 3.x version string. The launcher `py` on
+ * Windows defaults to the highest-version installed Python 3, so the
+ * extra `-3` flag is not required.
+ */
+function findPython(): string {
+  const candidates = ['py', 'python3', 'python'];
+  for (const cmd of candidates) {
+    try {
+      const out = execSync(`${cmd} --version`, {
+        encoding: 'utf-8',
+        timeout: 3000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      if (/Python\s+3\./.test(out)) {
+        console.log(`[DEBUG] Python interpreter resolved: ${cmd} (${out.trim()})`);
+        return cmd;
+      }
+    } catch {
+      continue;
+    }
+  }
+  console.warn('[DEBUG] No working Python 3 interpreter found; falling back to "python"');
+  return 'python';
+}
+
 function getAppConfig(): IAppConfig {
   const bundledPath = getBundledFFmpegPath();
-  
+  const pythonPath = findPython();
+
   // Resolve Python script path
   let pythonScriptPath = path.join(__dirname, '../../src/videomerger/video_processor_cli.py');
   
@@ -258,7 +490,7 @@ function getAppConfig(): IAppConfig {
   console.log('[DEBUG] Resources Path:', process.resourcesPath);
 
   return {
-    pythonPath: 'python',
+    pythonPath,
     pythonScriptPath,
     supportedFormats: [
       'mp4', 'mov', 'avi', 'mkv', 'webm',
@@ -708,24 +940,25 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('check-ffmpeg', async () => {
-    const adapter = container.resolve<PythonFFmpegAdapter>('FFmpegAdapter');
-    const available = await adapter.isAvailable();
-    const version = available ? await adapter.getVersion() : 'not found';
-    return { available, version };
+    // Probe FFmpeg binary directly so a broken Python install (e.g. the
+    // Microsoft Store python.exe shim) cannot make the indicator falsely
+    // report FFmpeg as missing. Python is only needed for merging.
+    const probe = resolveWorkingFFmpeg();
+    return {
+      available: !!probe,
+      version: probe?.version || 'not found',
+    };
   });
 
   // Enhanced FFmpeg details for the indicator dialog
   ipcMain.handle('check-ffmpeg-details', async () => {
-    const adapter = container.resolve<PythonFFmpegAdapter>('FFmpegAdapter');
-    const available = await adapter.isAvailable();
-    const version = available ? await adapter.getVersion() : 'not found';
+    const probe = resolveWorkingFFmpeg();
     const bundledPath = getBundledFFmpegPath();
-    const systemPath = getFFmpegSystemPath();
     return {
-      available,
-      version,
-      path: bundledPath || systemPath || 'Not found',
-      isBundled: !!bundledPath,
+      available: !!probe,
+      version: probe?.version || 'not found',
+      path: probe?.path || 'Not found',
+      isBundled: !!bundledPath && probe?.path === bundledPath,
     };
   });
 
@@ -797,12 +1030,58 @@ function setupIPC(): void {
       return { success: false, error: err?.message || 'Google OAuth not configured.' };
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       console.log('[Auth][Main] Starting OAuth flow', {
         redirectUri: config.redirectUri,
         hasClientId: Boolean(config.clientId),
         hasClientSecret: Boolean(config.clientSecret),
       });
+
+      let resolved = false;
+      let server: http.Server | null = null;
+
+      let oauthTimeout: NodeJS.Timeout | null = setTimeout(() => {
+        closeServer();
+        resolveOnce({ success: false, error: 'Google sign-in timed out. Please try again.' });
+      }, 180000);
+
+      const resolveOnce = (payload: { success: boolean; error?: string; user?: any }) => {
+        if (resolved) {
+          return;
+        }
+        resolved = true;
+        if (oauthTimeout) {
+          clearTimeout(oauthTimeout);
+          oauthTimeout = null;
+        }
+        resolve(payload);
+      };
+
+      const closeServer = () => {
+        try {
+          if (server && server.listening) {
+            server.close();
+          }
+        } catch {
+          // noop
+        }
+      };
+
+      let redirectUrl: url.URL;
+      try {
+        redirectUrl = new url.URL(config.redirectUri);
+      } catch {
+        return resolveOnce({ success: false, error: `Invalid GOOGLE_REDIRECT_URI: ${config.redirectUri}` });
+      }
+
+      if (redirectUrl.hostname !== 'localhost' && redirectUrl.hostname !== '127.0.0.1') {
+        return resolveOnce({ success: false, error: 'GOOGLE_REDIRECT_URI must use localhost for desktop OAuth callback.' });
+      }
+
+      const callbackPort = Number(redirectUrl.port || 80);
+      const callbackOrigin = `${redirectUrl.protocol}//${redirectUrl.host}`;
+      const callbackPath = redirectUrl.pathname || '/';
+
       const authUrl = `${config.authUrl}?` +
         `client_id=${encodeURIComponent(config.clientId)}` +
         `&redirect_uri=${encodeURIComponent(config.redirectUri)}` +
@@ -812,11 +1091,27 @@ function setupIPC(): void {
         `&prompt=consent`;
 
       // Create a local HTTP server to catch the redirect
-      const server = http.createServer(async (req, res) => {
+      server = http.createServer(async (req, res) => {
         try {
           console.log('[Auth][Main] OAuth callback received:', req.url || '/');
-          const reqUrl = new url.URL(req.url || '', `http://localhost:8976`);
+          const reqUrl = new url.URL(req.url || '', callbackOrigin);
+
+          if (reqUrl.pathname !== callbackPath) {
+            res.writeHead(404, { 'Content-Type': 'text/html' });
+            res.end('<html><body><h2>Not found.</h2></body></html>');
+            return;
+          }
+
           const code = reqUrl.searchParams.get('code');
+          const oauthError = reqUrl.searchParams.get('error');
+
+          if (oauthError) {
+            res.writeHead(400, { 'Content-Type': 'text/html' });
+            res.end('<html><body><h2>Login canceled or denied.</h2></body></html>');
+            closeServer();
+            resolveOnce({ success: false, error: `Google OAuth error: ${oauthError}` });
+            return;
+          }
 
           if (code) {
             console.log('[Auth][Main] Authorization code received; exchanging for tokens');
@@ -826,7 +1121,7 @@ function setupIPC(): void {
             const tokens = await exchangeCodeForTokens(code);
             const userInfo = await fetchGoogleUserInfo(tokens.access_token);
 
-            store.set('googleAuth', {
+            writeGoogleAuth({
               accessToken: tokens.access_token,
               refreshToken: tokens.refresh_token,
               expiresAt: Date.now() + (tokens.expires_in * 1000),
@@ -838,9 +1133,8 @@ function setupIPC(): void {
               },
             });
 
-            server.close();
-            authWindow?.close();
-            resolve({
+            closeServer();
+            resolveOnce({
               success: true,
               user: {
                 name: userInfo.name,
@@ -852,53 +1146,45 @@ function setupIPC(): void {
             console.error('[Auth][Main] OAuth callback without code');
             res.writeHead(400, { 'Content-Type': 'text/html' });
             res.end('<html><body><h2>Login failed. Please try again.</h2></body></html>');
-            server.close();
-            authWindow?.close();
-            resolve({ success: false, error: 'No authorization code received' });
+            closeServer();
+            resolveOnce({ success: false, error: 'No authorization code received' });
           }
         } catch (err: any) {
           console.error('[Auth][Main] OAuth callback handler error:', err?.message || err);
           res.writeHead(500, { 'Content-Type': 'text/html' });
           res.end('<html><body><h2>Login error. Please try again.</h2></body></html>');
-          server.close();
-          authWindow?.close();
-          resolve({ success: false, error: err.message });
+          closeServer();
+          resolveOnce({ success: false, error: err?.message || 'OAuth callback error' });
         }
       });
 
-      server.listen(8976, () => {
-        console.log('[Auth][Main] OAuth callback server listening on http://localhost:8976');
+      server.on('error', (err: any) => {
+        console.error('[Auth][Main] OAuth callback server error:', err?.message || err);
+        resolveOnce({ success: false, error: `OAuth callback server error: ${err?.message || 'unknown error'}` });
       });
 
-      // Open OAuth2 popup
-      let authWindow: BrowserWindow | null = new BrowserWindow({
-        width: 600,
-        height: 700,
-        parent: mainWindow || undefined,
-        modal: true,
-        autoHideMenuBar: true,
-        icon: resolveAppIconPath(),
-        webPreferences: { nodeIntegration: false, contextIsolation: true },
-      });
+      server.listen(callbackPort, redirectUrl.hostname, () => {
+        console.log(`[Auth][Main] OAuth callback server listening on ${callbackOrigin}${callbackPath}`);
 
-      authWindow.setMenuBarVisibility(false);
-
-      authWindow.loadURL(authUrl);
-      authWindow.on('closed', () => {
-        console.log('[Auth][Main] OAuth window closed by user');
-        authWindow = null;
-        server.close();
+        void shell.openExternal(authUrl)
+          .then(() => {
+            console.log('[Auth][Main] Opened OAuth in external browser');
+          })
+          .catch((openErr: any) => {
+            closeServer();
+            resolveOnce({ success: false, error: `Failed to open OAuth page: ${openErr?.message || 'unknown error'}` });
+          });
       });
     });
   });
 
   ipcMain.handle('google-oauth-logout', async () => {
-    store.delete('googleAuth');
+    clearGoogleAuth();
     return { success: true };
   });
 
   ipcMain.handle('google-auth-status', async () => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth();
     if (auth && auth.accessToken) {
       return {
         isLoggedIn: true,
@@ -924,7 +1210,7 @@ function setupIPC(): void {
     embeddable?: boolean;
     publicStatsViewable?: boolean;
   }) => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth() as any;
     if (!auth || !auth.accessToken) {
       return { success: false, error: 'Not authenticated with Google' };
     }
@@ -954,7 +1240,7 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('youtube-account-summary', async () => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth() as any;
     if (!auth || !auth.accessToken) {
       return { success: false, error: 'Not authenticated with Google' };
     }
@@ -976,7 +1262,7 @@ function setupIPC(): void {
     defaults: Record<string, any>;
     presets: Array<Record<string, any>>;
   }) => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth() as any;
     const userEmail = String(auth?.user?.email || '').trim().toLowerCase();
     if (!auth || !auth.accessToken || !userEmail) {
       return { success: false, error: 'Not authenticated with Google' };
@@ -994,7 +1280,7 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('youtube-online-presets-load', async () => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth() as any;
     const userEmail = String(auth?.user?.email || '').trim().toLowerCase();
     if (!auth || !auth.accessToken || !userEmail) {
       return { success: false, error: 'Not authenticated with Google' };

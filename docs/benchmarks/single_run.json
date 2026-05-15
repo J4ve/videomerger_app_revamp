@@ -1,0 +1,28 @@
+{
+  "clip_duration_sec": 2.0,
+  "platform": "win32",
+  "ffmpeg": "resources/ffmpeg/ffmpeg.exe (gyan.dev essentials 6.1.1)",
+  "host": "Windows 11 Pro, development laptop",
+  "captured_on": "2026-05-15",
+  "baseline_seconds_by_clip_count": {
+    "2": 0.628,
+    "5": 1.534,
+    "10": 3.12
+  },
+  "quality_seconds": {
+    "low": 0.606,
+    "medium": 0.901,
+    "high": 1.172
+  },
+  "phase_overhead_seconds": {
+    "phase1_per_clip_edits": 0.868,
+    "phase2_loudnorm": 1.007,
+    "phase3_silence_trim": 1.139
+  },
+  "notes": [
+    "Synthetic clips generated with `ffmpeg -f lavfi -i testsrc2 + sine`.",
+    "Each row is a single wall-clock measurement of merge_videos() end-to-end including normalize + concat passes.",
+    "Phase rows are merges of 3 clips with that single feature toggled on; compare against 3-clip baseline (interpolated from 2→5 ≈ 1.0s).",
+    "Captions (Phase 4) intentionally not measured here — would dominate wall clock with model load + transcription. Captured separately in `docs/DEVELOPMENT.md` Phase 4 section."
+  ]
+}

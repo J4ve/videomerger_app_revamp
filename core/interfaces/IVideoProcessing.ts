@@ -37,6 +37,116 @@ export interface IVideoStandardization {
 }
 
 /**
+ * Aspect ratio presets for reformatting clips.
+ * "original" keeps source aspect, custom uses explicit width:height.
+ */
+export type AspectRatioPreset =
+  | 'original'
+  | '16:9'
+  | '9:16'
+  | '1:1'
+  | '4:5'
+  | '4:3'
+  | 'custom';
+
+/**
+ * Crop rectangle (pixels, relative to source frame).
+ * x/y are top-left coords; w/h are crop dimensions.
+ */
+export interface ICropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Per-clip edit options applied during the normalize pass.
+ * All fields optional; absent fields skip the corresponding filter.
+ */
+export interface IClipEdit {
+  /** Seconds to skip from start of clip. Defaults to 0. */
+  trimStart?: number;
+  /** Seconds to skip from end of clip. Defaults to 0. */
+  trimEnd?: number;
+  /** Audio volume multiplier. 1.0 = unchanged, 0 = mute, 2.0 = double. */
+  volume?: number;
+  /** Optional explicit crop rectangle (pre-scale). */
+  crop?: ICropRect;
+  /** Target aspect ratio preset. Drives scale+pad/crop after crop rect. */
+  aspectRatio?: AspectRatioPreset;
+  /** Custom aspect ratio width (only used if aspectRatio === 'custom'). */
+  aspectWidth?: number;
+  /** Custom aspect ratio height (only used if aspectRatio === 'custom'). */
+  aspectHeight?: number;
+  /** Brightness adjustment. Range -1.0 to 1.0. Default 0. */
+  brightness?: number;
+  /** Contrast adjustment. Range 0 to 2.0. Default 1.0. */
+  contrast?: number;
+  /** Saturation adjustment. Range 0 to 3.0. Default 1.0. */
+  saturation?: number;
+}
+
+/**
+ * Audio loudness normalization options (EBU R128 / ITU-R BS.1770).
+ * When enabled, each clip is loudness-normalized in the normalize pass
+ * so concatenated output has consistent perceived loudness across clips.
+ */
+export interface ILoudnessNormalization {
+  /** Master switch. Defaults to false (no loudnorm applied). */
+  enabled: boolean;
+  /** Integrated loudness target in LUFS. EBU R128 broadcast = -23, streaming platforms ~ -14 to -16. Default -16. */
+  targetLufs?: number;
+  /** True peak ceiling in dBTP. Default -1.5. */
+  truePeak?: number;
+  /** Loudness range in LU. Default 11. */
+  loudnessRange?: number;
+}
+
+/**
+ * Automatic silence-trim options. When enabled, a `silencedetect` probe
+ * runs against each clip before merging and the detected leading +
+ * trailing silence durations are appended to the per-clip trimStart /
+ * trimEnd values. Mid-clip silence is intentionally left alone to avoid
+ * cutting natural speech pauses.
+ */
+export interface IAutoSilenceTrim {
+  /** Master switch. Defaults to false (no silence trimming). */
+  enabled: boolean;
+  /** dB level below which audio is treated as silence. Default -50. */
+  thresholdDb?: number;
+  /** Minimum silence run length in seconds to count. Default 0.5. */
+  minDurationSec?: number;
+}
+
+/**
+ * Faster-whisper model preset. Larger models are more accurate but
+ * download a larger file on first use and take longer to transcribe.
+ */
+export type CaptionModel =
+  | 'tiny'
+  | 'base'
+  | 'small'
+  | 'medium'
+  | 'large-v3';
+
+/**
+ * Auto-caption options. When enabled, each clip is transcribed via
+ * faster-whisper and a merged SRT sidecar is written alongside the
+ * output video with timestamps offset to the merged timeline.
+ */
+export interface IAutoCaptions {
+  /** Master switch. Defaults to false (no captions). */
+  enabled: boolean;
+  /** Whisper model size. Default `base` (~74 MB, balance of speed and accuracy). */
+  model?: CaptionModel;
+  /** ISO 639-1 language code or `auto` to detect. Default `auto`. */
+  language?: string;
+  /** faster-whisper compute_type. Default `int8` for CPU efficiency. */
+  computeType?: 'int8' | 'int8_float16' | 'float16' | 'float32';
+}
+
+/**
  * Video merge options
  */
 export interface IVideoMergeOptions {
@@ -45,6 +155,17 @@ export interface IVideoMergeOptions {
   quality?: 'low' | 'medium' | 'high';
   overwrite?: boolean;
   standardization?: IVideoStandardization;
+  /**
+   * Per-clip edits parallel to inputPaths. Index N applies to inputPaths[N].
+   * Length must match inputPaths.length when provided.
+   */
+  clipEdits?: IClipEdit[];
+  /** Global audio loudness normalization applied to all clips. */
+  loudnorm?: ILoudnessNormalization;
+  /** Auto-detect + remove leading/trailing silence from each clip. */
+  autoSilenceTrim?: IAutoSilenceTrim;
+  /** Auto-caption the merged output via faster-whisper, writes .srt sidecar. */
+  captions?: IAutoCaptions;
 }
 
 /**

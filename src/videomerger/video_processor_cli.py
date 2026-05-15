@@ -11,6 +11,7 @@ with robust merging and real-time progress
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -213,6 +214,527 @@ def _parse_time_from_progress(line):
     return None
 
 
+# ---------- Silence detection helpers (Phase 3) ----------
+
+# silencedetect prints lines like:
+#   [silencedetect @ 0x...] silence_start: 0
+#   [silencedetect @ 0x...] silence_end: 2.345 | silence_duration: 2.345
+_SILENCE_START_RE = re.compile(r'silence_start:\s*([-\d.]+)')
+_SILENCE_END_RE = re.compile(
+    r'silence_end:\s*([-\d.]+)\s*\|\s*silence_duration:\s*([-\d.]+)'
+)
+
+
+def _parse_silence_events(stderr_text):
+    """Parse silencedetect events from ffmpeg stderr.
+
+    Returns a list of (start, end) tuples sorted by start time. ``end``
+    may be ``None`` when the silence extends past the end of the
+    stream (i.e. trailing silence with no closing end event).
+    """
+    events = []
+    pending_start = None
+    for line in stderr_text.splitlines():
+        ms = _SILENCE_START_RE.search(line)
+        if ms:
+            pending_start = float(ms.group(1))
+            continue
+        me = _SILENCE_END_RE.search(line)
+        if me and pending_start is not None:
+            events.append((pending_start, float(me.group(1))))
+            pending_start = None
+    # Unclosed trailing silence — duration up to end of clip
+    if pending_start is not None:
+        events.append((pending_start, None))
+    return events
+
+
+def detect_silence_boundaries(
+    video_path,
+    threshold_db=-50.0,
+    min_duration=0.5,
+    duration_hint=None,
+):
+    """Detect leading + trailing silence durations for a single clip.
+
+    Runs a fast probing pass with the ``silencedetect`` audio filter
+    and parses its stderr log. Returns ``(leading, trailing)`` in
+    seconds. Both values default to ``0.0`` if no silence is detected,
+    if the clip has no audio, or if ffmpeg fails to run.
+
+    Only edges are reported. Mid-clip silence is intentionally
+    ignored so callers can apply the result directly to the
+    Phase 1 trimStart / trimEnd mechanism, keeping audio + video
+    in sync without complex filter expressions.
+    """
+    if not _has_audio(video_path):
+        return 0.0, 0.0
+
+    if duration_hint is None:
+        duration_hint = _get_duration(video_path) or 0.0
+
+    cmd = [
+        'ffmpeg',
+        '-hide_banner',
+        '-nostdin',
+        '-i', video_path,
+        '-af', f'silencedetect=noise={threshold_db}dB:d={min_duration}',
+        '-f', 'null',
+        '-',
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError as exc:
+        print(
+            f'WARNING: silencedetect failed for {video_path}: {exc}',
+            file=sys.stderr,
+        )
+        return 0.0, 0.0
+
+    events = _parse_silence_events(result.stderr or '')
+    if not events:
+        return 0.0, 0.0
+
+    leading = 0.0
+    first_start, first_end = events[0]
+    if first_start <= 0.05 and first_end is not None:
+        leading = max(0.0, first_end)
+
+    trailing = 0.0
+    last_start, last_end = events[-1]
+    if duration_hint > 0:
+        if last_end is None:
+            trailing = max(0.0, duration_hint - last_start)
+        elif duration_hint - last_end <= 0.05:
+            trailing = max(0.0, duration_hint - last_start)
+
+    return leading, trailing
+
+
+def _augment_edits_with_silence_trim(
+    input_paths,
+    clip_edits,
+    raw_durations,
+    threshold_db,
+    min_duration,
+):
+    """Run silencedetect on each clip and add detected silence to trims.
+
+    Mutates ``clip_edits`` in place so the existing trimStart / trimEnd
+    pipeline picks up the auto-detected values. Existing manual trim
+    values from the user are preserved and the detected silence is
+    added on top — never replaced.
+    """
+    print('INFO: Detecting silence boundaries for auto-trim...')
+    for index, path in enumerate(input_paths):
+        leading, trailing = detect_silence_boundaries(
+            path,
+            threshold_db=threshold_db,
+            min_duration=min_duration,
+            duration_hint=raw_durations[index],
+        )
+        if leading <= 0 and trailing <= 0:
+            continue
+        edit = clip_edits[index]
+        try:
+            existing_start = float(edit.get('trimStart', 0) or 0)
+        except (TypeError, ValueError):
+            existing_start = 0.0
+        try:
+            existing_end = float(edit.get('trimEnd', 0) or 0)
+        except (TypeError, ValueError):
+            existing_end = 0.0
+        edit['trimStart'] = existing_start + leading
+        edit['trimEnd'] = existing_end + trailing
+        print(
+            f'INFO:   {os.path.basename(path)} '
+            f'-> +{leading:.2f}s leading, +{trailing:.2f}s trailing'
+        )
+
+
+# ---------- Caption helpers (Phase 4) ----------
+
+# SRT timestamp regex: HH:MM:SS,mmm --> HH:MM:SS,mmm
+_SRT_TIMESTAMP_RE = re.compile(
+    r'(?P<sh>\d+):(?P<sm>\d+):(?P<ss>\d+),(?P<sms>\d+)\s*-->\s*'
+    r'(?P<eh>\d+):(?P<em>\d+):(?P<es>\d+),(?P<ems>\d+)'
+)
+
+
+def _srt_to_seconds(h, m, s, ms):
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+
+
+def _seconds_to_srt_timestamp(seconds):
+    if seconds < 0:
+        seconds = 0.0
+    millis = int(round(seconds * 1000))
+    hours, rem = divmod(millis, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, ms = divmod(rem, 1000)
+    return f'{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}'
+
+
+def _parse_srt_blocks(srt_text):
+    """Parse SRT text into a list of (start_sec, end_sec, body_text) tuples.
+
+    Robust to: blank-line variability, missing index lines, Windows line
+    endings. Anything that doesn't match the timestamp regex is skipped.
+    """
+    blocks = []
+    current_start = None
+    current_end = None
+    current_body_lines = []
+
+    def flush():
+        nonlocal current_start, current_end, current_body_lines
+        if current_start is not None and current_end is not None:
+            body = '\n'.join(current_body_lines).strip()
+            if body:
+                blocks.append((current_start, current_end, body))
+        current_start = None
+        current_end = None
+        current_body_lines = []
+
+    for line in (srt_text or '').splitlines():
+        stripped = line.strip()
+        if not stripped:
+            flush()
+            continue
+        ts = _SRT_TIMESTAMP_RE.search(stripped)
+        if ts:
+            flush()
+            current_start = _srt_to_seconds(
+                ts.group('sh'), ts.group('sm'), ts.group('ss'), ts.group('sms'),
+            )
+            current_end = _srt_to_seconds(
+                ts.group('eh'), ts.group('em'), ts.group('es'), ts.group('ems'),
+            )
+            continue
+        # Pure-digit index lines come right before the timestamp; ignore
+        # them as long as we don't have a timestamp yet for this block.
+        if current_start is None and stripped.isdigit():
+            continue
+        if current_start is not None:
+            current_body_lines.append(line.rstrip())
+
+    flush()
+    return blocks
+
+
+def _offset_srt_blocks(blocks, offset_seconds):
+    """Shift every (start, end, body) tuple by ``offset_seconds``."""
+    return [
+        (max(0.0, s + offset_seconds), max(0.0, e + offset_seconds), body)
+        for (s, e, body) in blocks
+    ]
+
+
+def _concat_srt_blocks_to_text(all_blocks):
+    """Serialize a flat list of (start, end, body) tuples into SRT text with
+    sequential indices 1..N."""
+    out_lines = []
+    for index, (start, end, body) in enumerate(all_blocks, start=1):
+        out_lines.append(str(index))
+        out_lines.append(
+            f'{_seconds_to_srt_timestamp(start)} --> '
+            f'{_seconds_to_srt_timestamp(end)}'
+        )
+        out_lines.append(body)
+        out_lines.append('')
+    return '\n'.join(out_lines).rstrip() + '\n'
+
+
+def _build_merged_srt(per_clip_srt_paths, effective_durations):
+    """Stitch per-clip SRT files into one merged SRT string.
+
+    ``effective_durations`` are the post-trim durations in clip order;
+    each clip's blocks are shifted by the running accumulator so the
+    merged SRT timeline matches the merged video timeline.
+
+    Missing or unreadable SRTs are treated as no-captions for that clip
+    (the running offset still advances by the clip's effective duration).
+    """
+    merged_blocks = []
+    accumulated = 0.0
+    for index, srt_path in enumerate(per_clip_srt_paths):
+        if srt_path and os.path.exists(srt_path):
+            try:
+                with open(srt_path, 'r', encoding='utf-8') as fh:
+                    blocks = _parse_srt_blocks(fh.read())
+                merged_blocks.extend(_offset_srt_blocks(blocks, accumulated))
+            except OSError as exc:
+                print(
+                    f'WARNING: Could not read per-clip SRT {srt_path}: {exc}',
+                    file=sys.stderr,
+                )
+        accumulated += effective_durations[index] if index < len(effective_durations) else 0.0
+    return _concat_srt_blocks_to_text(merged_blocks)
+
+
+def _caption_script_path():
+    """Resolve the bundled caption_cli.py next to this file."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'caption_cli.py')
+
+
+def _transcribe_clip_to_srt(
+    input_path,
+    output_srt_path,
+    model='base',
+    language='auto',
+    compute_type='int8',
+    python_executable=None,
+):
+    """Invoke caption_cli.py for one clip. Returns True on success."""
+    python_executable = python_executable or sys.executable
+    script = _caption_script_path()
+    if not os.path.exists(script):
+        print(f'WARNING: caption_cli.py not found at {script}', file=sys.stderr)
+        return False
+
+    cmd = [
+        python_executable, '-u', script, '--transcribe',
+        '--input', input_path,
+        '--output', output_srt_path,
+        '--model', model,
+        '--language', language,
+        '--compute-type', compute_type,
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError as exc:
+        print(f'WARNING: Caption subprocess failed: {exc}', file=sys.stderr)
+        return False
+    if result.stdout:
+        # Surface model-load + transcription progress through merge log.
+        sys.stdout.write(result.stdout)
+    if result.returncode != 0:
+        print(
+            f'WARNING: Caption pass for {input_path} exited with '
+            f'code {result.returncode}',
+            file=sys.stderr,
+        )
+        if result.stderr:
+            sys.stderr.write(result.stderr)
+        return False
+    return True
+
+
+# ---------- Per-clip edit helpers (Phase 1) ----------
+
+ASPECT_PRESETS = {
+    '16:9': (16, 9),
+    '9:16': (9, 16),
+    '1:1': (1, 1),
+    '4:5': (4, 5),
+    '4:3': (4, 3),
+}
+
+
+def _load_clip_edits(clips_json_path, input_paths):
+    """Load per-clip edits keyed to input_paths order.
+
+    Returns a list of dicts (one per input) with normalized fields, or
+    None if the JSON file is missing/empty/malformed (caller falls back
+    to default behavior).
+    """
+    if not clips_json_path or not os.path.exists(clips_json_path):
+        return None
+    try:
+        with open(clips_json_path, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f'WARNING: Could not read clips JSON ({exc}); '
+            f'falling back to defaults',
+            file=sys.stderr,
+        )
+        return None
+
+    clips = data.get('clips') if isinstance(data, dict) else None
+    if not isinstance(clips, list) or len(clips) != len(input_paths):
+        return None
+
+    edits = []
+    for entry in clips:
+        edit = entry.get('edits') if isinstance(entry, dict) else {}
+        edits.append(edit if isinstance(edit, dict) else {})
+    return edits
+
+
+def _clip_effective_duration(raw_duration, edit):
+    """Return clip duration after trimStart/trimEnd applied."""
+    start = max(float(edit.get('trimStart', 0) or 0), 0.0)
+    end_trim = max(float(edit.get('trimEnd', 0) or 0), 0.0)
+    effective = max(raw_duration - start - end_trim, 0.0)
+    return effective
+
+
+def _aspect_target_dims(edit, default_w, default_h):
+    """Pick target dims based on aspectRatio preset for a clip.
+
+    Returns (w, h) divisible by 2. Falls back to baseline dims when
+    preset is 'original' or unknown.
+    """
+    preset = (edit or {}).get('aspectRatio') or 'original'
+    if preset == 'original':
+        return default_w, default_h
+    if preset == 'custom':
+        try:
+            cw = int(edit.get('aspectWidth') or 0)
+            ch = int(edit.get('aspectHeight') or 0)
+        except (TypeError, ValueError):
+            cw = ch = 0
+        if cw > 0 and ch > 0:
+            ratio_w, ratio_h = cw, ch
+        else:
+            return default_w, default_h
+    elif preset in ASPECT_PRESETS:
+        ratio_w, ratio_h = ASPECT_PRESETS[preset]
+    else:
+        return default_w, default_h
+
+    # Fit to baseline area while honoring aspect ratio
+    base_area = default_w * default_h
+    h = int((base_area * ratio_h / ratio_w) ** 0.5)
+    w = int(h * ratio_w / ratio_h)
+    w -= w % 2
+    h -= h % 2
+    return max(w, 2), max(h, 2)
+
+
+def _build_clip_video_chain(edit, target_w, target_h, target_fps):
+    """Build the video filter chain string for one clip.
+
+    Order: trim -> crop -> scale+pad(aspect target) -> fps -> eq -> format.
+    """
+    filters = []
+
+    # Trim is applied at input level via -ss / -t (faster + frame-accurate
+    # with re-encode). Filter only needs to rebase PTS so concat timestamps
+    # start at 0 for each clip segment.
+    start = max(float(edit.get('trimStart', 0) or 0), 0.0)
+    end_trim = max(float(edit.get('trimEnd', 0) or 0), 0.0)
+    if start > 0 or end_trim > 0:
+        filters.append('setpts=PTS-STARTPTS')
+
+    crop = edit.get('crop') or {}
+    try:
+        cw = int(crop.get('width') or 0)
+        ch = int(crop.get('height') or 0)
+        cx = int(crop.get('x') or 0)
+        cy = int(crop.get('y') or 0)
+    except (TypeError, ValueError):
+        cw = ch = cx = cy = 0
+    if cw > 0 and ch > 0:
+        filters.append(f'crop={cw}:{ch}:{cx}:{cy}')
+
+    aspect_w, aspect_h = _aspect_target_dims(edit, target_w, target_h)
+    filters.append(
+        f'scale={aspect_w}:{aspect_h}:'
+        'force_original_aspect_ratio=decrease'
+    )
+    filters.append(
+        f'pad={aspect_w}:{aspect_h}:(ow-iw)/2:(oh-ih)/2'
+    )
+
+    filters.append(f'fps={target_fps}')
+
+    try:
+        brightness = float(edit.get('brightness') or 0)
+    except (TypeError, ValueError):
+        brightness = 0.0
+    try:
+        contrast = float(edit.get('contrast', 1.0) or 1.0)
+    except (TypeError, ValueError):
+        contrast = 1.0
+    try:
+        saturation = float(edit.get('saturation', 1.0) or 1.0)
+    except (TypeError, ValueError):
+        saturation = 1.0
+    if brightness != 0.0 or contrast != 1.0 or saturation != 1.0:
+        # Clamp to ffmpeg-supported ranges
+        brightness = max(-1.0, min(1.0, brightness))
+        contrast = max(0.0, min(2.0, contrast))
+        saturation = max(0.0, min(3.0, saturation))
+        filters.append(
+            f'eq=brightness={brightness:.3f}:'
+            f'contrast={contrast:.3f}:'
+            f'saturation={saturation:.3f}'
+        )
+
+    filters.append('format=yuv420p')
+    return ','.join(filters)
+
+
+def _build_clip_audio_chain(edit, target_audio_rate, loudnorm=None):
+    """Build the audio filter chain string for one clip.
+
+    When ``loudnorm`` is a dict with ``enabled: True`` we append the
+    EBU R128 ``loudnorm`` filter with the supplied target LUFS / true
+    peak / loudness range. This is the single-pass form — adequate
+    for the "fast merge" workflow at the cost of slightly less
+    accurate LUFS targeting compared to a measure-then-normalize
+    two-pass.
+    """
+    filters = []
+
+    # Trim handled by input-level -ss/-t. Filter only rebases PTS.
+    start = max(float(edit.get('trimStart', 0) or 0), 0.0)
+    end_trim = max(float(edit.get('trimEnd', 0) or 0), 0.0)
+    if start > 0 or end_trim > 0:
+        filters.append('asetpts=PTS-STARTPTS')
+
+    filters.append(
+        f'aformat=sample_rates={target_audio_rate}:channel_layouts=stereo'
+    )
+
+    try:
+        volume = float(edit.get('volume', 1.0) or 1.0)
+    except (TypeError, ValueError):
+        volume = 1.0
+    if abs(volume - 1.0) > 1e-6:
+        volume = max(0.0, min(volume, 8.0))
+        filters.append(f'volume={volume:.3f}')
+
+    if loudnorm and loudnorm.get('enabled'):
+        try:
+            target_lufs = float(loudnorm.get('targetLufs', -16) or -16)
+        except (TypeError, ValueError):
+            target_lufs = -16.0
+        try:
+            true_peak = float(loudnorm.get('truePeak', -1.5) or -1.5)
+        except (TypeError, ValueError):
+            true_peak = -1.5
+        try:
+            lra = float(loudnorm.get('loudnessRange', 11) or 11)
+        except (TypeError, ValueError):
+            lra = 11.0
+        # Clamp to ffmpeg-supported ranges so a malformed UI input
+        # does not crash the filter graph.
+        target_lufs = max(-70.0, min(-5.0, target_lufs))
+        true_peak = max(-9.0, min(0.0, true_peak))
+        lra = max(1.0, min(50.0, lra))
+        filters.append(
+            f'loudnorm=I={target_lufs:.2f}:TP={true_peak:.2f}:LRA={lra:.2f}'
+        )
+
+    return ','.join(filters)
+
+
 def merge_videos(
     input_paths,
     output_path,
@@ -220,6 +742,15 @@ def merge_videos(
     codec='H.264',
     overwrite=False,
     disable_hwaccel=True,
+    clip_edits=None,
+    loudnorm=None,
+    auto_silence_trim=False,
+    silence_threshold_db=-50.0,
+    silence_min_duration=0.5,
+    captions=False,
+    caption_model='base',
+    caption_language='auto',
+    caption_compute_type='int8',
 ):
     """Normalize clips and concatenate them into a single output video."""
     if len(input_paths) < 2:
@@ -252,7 +783,23 @@ def merge_videos(
     )
 
     # Maintain smooth 0-100 progress tracking across all clips.
-    durations = [_get_duration(path) for path in input_paths]
+    raw_durations = [_get_duration(path) for path in input_paths]
+    if clip_edits is None:
+        clip_edits = [{} for _ in input_paths]
+
+    if auto_silence_trim:
+        _augment_edits_with_silence_trim(
+            input_paths,
+            clip_edits,
+            raw_durations,
+            threshold_db=silence_threshold_db,
+            min_duration=silence_min_duration,
+        )
+
+    durations = [
+        _clip_effective_duration(raw_durations[i], clip_edits[i])
+        for i in range(len(input_paths))
+    ]
     total_duration = sum(durations)
     accumulated_duration = 0.0
 
@@ -281,27 +828,41 @@ def merge_videos(
             temp_filepath = os.path.join(temp_dir, temp_filename)
             normalized_files.append(temp_filename)
 
-            filter_v = (
-                f'scale={target_width}:{target_height}:'
-                'force_original_aspect_ratio=decrease,'
-                f'pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2,'
-                f'fps={target_fps},format=yuv420p'
+            edit = clip_edits[index] if index < len(clip_edits) else {}
+            filter_v = _build_clip_video_chain(
+                edit, target_width, target_height, target_fps
+            )
+            filter_a_chain = _build_clip_audio_chain(
+                edit, target_audio_rate, loudnorm=loudnorm,
             )
 
             cmd = ['ffmpeg', '-y', '-hide_banner', '-nostdin']
             if disable_hwaccel:
                 cmd.extend(['-hwaccel', 'none'])
 
+            # Input-level trim: -ss seeks before -i (fast), -t caps duration.
+            # Combined with setpts/asetpts in filter chain to rebase PTS.
+            try:
+                trim_start = max(float(edit.get('trimStart', 0) or 0), 0.0)
+            except (TypeError, ValueError):
+                trim_start = 0.0
+            if trim_start > 0:
+                cmd.extend(['-ss', f'{trim_start:.3f}'])
+
             cmd.extend(['-i', path])
+
+            effective = durations[index]
+            if effective > 0 and effective < raw_durations[index]:
+                cmd.extend(['-t', f'{effective:.3f}'])
 
             has_audio = _has_audio(path)
             if has_audio:
-                filter_a = (
-                    'aformat=sample_rates='
-                    f'{target_audio_rate}:channel_layouts=stereo'
+                filter_str = (
+                    f'[0:v]{filter_v}[outv]; [0:a]{filter_a_chain}[outa]'
                 )
-                filter_str = f'[0:v]{filter_v}[outv]; [0:a]{filter_a}[outa]'
             else:
+                # Synthesize silent stereo track at target rate; volume in
+                # filter_a_chain still applies (no-op when source missing).
                 filter_str = (
                     f'[0:v]{filter_v}[outv]; '
                     f'anullsrc=r={target_audio_rate}:cl=stereo[outa]'
@@ -356,6 +917,21 @@ def merge_videos(
 
             accumulated_duration += durations[index]
 
+        per_clip_srt_paths = []
+        if captions:
+            print('\nINFO: Generating captions per clip (faster-whisper)...')
+            for index, normalized in enumerate(normalized_files):
+                norm_full = os.path.join(temp_dir, normalized)
+                srt_path = os.path.join(temp_dir, f'norm_{index}.srt')
+                ok = _transcribe_clip_to_srt(
+                    norm_full,
+                    srt_path,
+                    model=caption_model,
+                    language=caption_language,
+                    compute_type=caption_compute_type,
+                )
+                per_clip_srt_paths.append(srt_path if ok else None)
+
         print('\nINFO: Starting Pass 2 (Zero-RAM fast concatenation)...')
         list_file_path = os.path.join(temp_dir, 'files.txt')
 
@@ -389,6 +965,18 @@ def merge_videos(
 
         if result.returncode == 0:
             print('PROGRESS: 100', flush=True)
+            if captions and per_clip_srt_paths:
+                merged_srt_path = os.path.splitext(output_path)[0] + '.srt'
+                merged_srt = _build_merged_srt(per_clip_srt_paths, durations)
+                try:
+                    with open(merged_srt_path, 'w', encoding='utf-8') as fh:
+                        fh.write(merged_srt)
+                    print(f'INFO: Wrote merged captions sidecar to {merged_srt_path}')
+                except OSError as exc:
+                    print(
+                        f'WARNING: Could not write merged SRT: {exc}',
+                        file=sys.stderr,
+                    )
             print(f'\nSUCCESS: Merged videos to {output_path}')
             return True
 
@@ -443,6 +1031,81 @@ def main():
             '(less stable on some systems)'
         ),
     )
+    parser.add_argument(
+        '--clips-json',
+        help=(
+            'Path to a JSON file describing per-clip edits '
+            '(trim, crop, aspect, volume, color). Schema: '
+            '{"clips": [{"path": "...", "edits": {...}}, ...]}'
+        ),
+    )
+    parser.add_argument(
+        '--loudnorm',
+        action='store_true',
+        help='Apply EBU R128 audio loudness normalization to every clip',
+    )
+    parser.add_argument(
+        '--loudnorm-target',
+        type=float,
+        default=-16.0,
+        help='Integrated loudness target in LUFS (default -16, streaming-friendly)',
+    )
+    parser.add_argument(
+        '--loudnorm-true-peak',
+        type=float,
+        default=-1.5,
+        help='True peak ceiling in dBTP (default -1.5)',
+    )
+    parser.add_argument(
+        '--loudnorm-lra',
+        type=float,
+        default=11.0,
+        help='Target loudness range in LU (default 11)',
+    )
+    parser.add_argument(
+        '--auto-silence-trim',
+        action='store_true',
+        help=(
+            'Auto-detect leading and trailing silence in each clip via '
+            'silencedetect and add the detected duration to trimStart / '
+            'trimEnd before merging'
+        ),
+    )
+    parser.add_argument(
+        '--silence-threshold-db',
+        type=float,
+        default=-50.0,
+        help='Silence threshold in dB for silencedetect (default -50)',
+    )
+    parser.add_argument(
+        '--silence-min-duration',
+        type=float,
+        default=0.5,
+        help='Minimum silence duration in seconds (default 0.5)',
+    )
+    parser.add_argument(
+        '--captions',
+        action='store_true',
+        help=(
+            'Auto-transcribe each clip with faster-whisper and write a '
+            'merged .srt sidecar alongside the output video'
+        ),
+    )
+    parser.add_argument(
+        '--caption-model',
+        default='base',
+        help='faster-whisper model size (tiny / base / small / medium / large-v3)',
+    )
+    parser.add_argument(
+        '--caption-language',
+        default='auto',
+        help='ISO language code or "auto" to let Whisper detect',
+    )
+    parser.add_argument(
+        '--caption-compute-type',
+        default='int8',
+        help='faster-whisper compute_type (int8, int8_float16, float16, float32)',
+    )
 
     args = parser.parse_args()
 
@@ -467,6 +1130,17 @@ def main():
             )
             sys.exit(1)
 
+        clip_edits = _load_clip_edits(args.clips_json, args.inputs)
+        loudnorm = (
+            {
+                'enabled': True,
+                'targetLufs': args.loudnorm_target,
+                'truePeak': args.loudnorm_true_peak,
+                'loudnessRange': args.loudnorm_lra,
+            }
+            if args.loudnorm
+            else None
+        )
         success = merge_videos(
             args.inputs,
             args.output,
@@ -474,6 +1148,15 @@ def main():
             args.codec,
             args.overwrite,
             disable_hwaccel=not args.allow_hwaccel,
+            clip_edits=clip_edits,
+            loudnorm=loudnorm,
+            auto_silence_trim=args.auto_silence_trim,
+            silence_threshold_db=args.silence_threshold_db,
+            silence_min_duration=args.silence_min_duration,
+            captions=args.captions,
+            caption_model=args.caption_model,
+            caption_language=args.caption_language,
+            caption_compute_type=args.caption_compute_type,
         )
         sys.exit(0 if success else 1)
 

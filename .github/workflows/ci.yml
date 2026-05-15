@@ -2,12 +2,14 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, dev, develop, 'feat/**' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, dev, develop ]
 
 jobs:
+  # ─── Flask web app (legacy) ───────────────────────────────────────────
   test:
+    name: Python tests (Flask web + CLI)
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -15,27 +17,27 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -e .
-    
+
     - name: Run linters
       run: |
         flake8 src/videomerger --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 src/videomerger --count --max-complexity=20 --max-line-length=127 --statistics
-    
+
     - name: Run tests
       run: |
         pytest tests/ -v --cov=src/videomerger --cov-report=xml
-    
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
@@ -44,19 +46,87 @@ jobs:
         name: codecov-umbrella
 
   build:
+    name: Flask web Docker image
     runs-on: ubuntu-latest
     needs: test
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Build Docker image
       run: |
         docker build -t videomerger:latest .
-    
+
     - name: Test Docker image
       run: |
         docker run -d -p 5000:5000 --name test-app videomerger:latest
         sleep 10
         curl -f http://localhost:5000/health || exit 1
         docker stop test-app
+
+  # ─── Electron desktop app ─────────────────────────────────────────────
+  desktop-test:
+    name: Desktop unit tests (vitest)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install Node dependencies
+      # `npm install` triggers the postinstall ffmpeg copy. On Linux
+      # ffmpeg-static still provides a binary, so the desktop dev env
+      # is usable on CI runners for any future smoke tests.
+      run: npm install
+
+    - name: TypeScript type-check (main)
+      run: npx tsc -p tsconfig.main.json --noEmit
+
+    - name: Run vitest (renderer + core + main suites)
+      run: |
+        npm test -- --run
+        npm run test:core -- --run
+
+  desktop-build:
+    name: Windows installer build
+    needs: desktop-test
+    # The packaged Windows .exe is the deployment artifact most people
+    # actually consume, so we build it on every push to main/dev and
+    # upload it as a workflow artifact for manual download. Code signing
+    # is intentionally out of scope until the team has a certificate.
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install Node dependencies
+      run: npm install
+
+    - name: Build renderer + main
+      run: npm run build
+
+    - name: Package Windows installer
+      run: npm run package
+      env:
+        # electron-builder writes lots of progress to stderr; suppress
+        # the auto-publish to GitHub Releases until we wire signing.
+        CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+    - name: Upload .exe installer artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: VideoMerger-Windows-${{ github.sha }}
+        path: dist-bin/*.exe
+        if-no-files-found: error
+        retention-days: 14

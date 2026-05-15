@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import ClipEditPanel, { IClipEdit } from './components/ClipEditPanel';
 
 declare global {
   interface Window {
@@ -281,6 +282,17 @@ const App: React.FC = () => {
   const [standardization, setStandardization] = useState<{
     resolution: string; fps: string;
   }>({ resolution: 'original', fps: 'original' });
+
+  // Phase 2: audio loudness normalization (global toggle, EBU R128 single-pass).
+  const [loudnormEnabled, setLoudnormEnabled] = useState<boolean>(false);
+  const [loudnormTarget, setLoudnormTarget] = useState<number>(-16);
+  // Phase 3: auto-detect + trim leading/trailing silence per clip.
+  const [autoSilenceTrimEnabled, setAutoSilenceTrimEnabled] = useState<boolean>(false);
+  const [silenceThresholdDb, setSilenceThresholdDb] = useState<number>(-50);
+  // Phase 4: auto-captioning (faster-whisper local).
+  const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(false);
+  const [captionModel, setCaptionModel] = useState<string>('base');
+  const [captionLanguage, setCaptionLanguage] = useState<string>('auto');
   const [customResolution, setCustomResolution] = useState<string>('');
   const [customFps, setCustomFps] = useState<string>('30');
 
@@ -288,6 +300,7 @@ const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
   const [authChecked, setAuthChecked] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string>('');
 
   // YouTube config state
   const [ytTitle, setYtTitle] = useState<string>('');
@@ -301,6 +314,9 @@ const App: React.FC = () => {
   const [ytLicense, setYtLicense] = useState<'youtube' | 'creativeCommon'>('youtube');
   const [ytEmbeddable, setYtEmbeddable] = useState<boolean>(true);
   const [ytPublicStatsViewable, setYtPublicStatsViewable] = useState<boolean>(true);
+  const [postMergeYtTitle, setPostMergeYtTitle] = useState<string>('');
+  const [postMergeYtDescription, setPostMergeYtDescription] = useState<string>('');
+  const [postMergeYtPrivacy, setPostMergeYtPrivacy] = useState<string>('private');
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadResult, setUploadResult] = useState<any>(null);
   const [finalizeConfigView, setFinalizeConfigView] = useState<'merge' | 'youtube'>('merge');
@@ -320,6 +336,9 @@ const App: React.FC = () => {
   const [allowDuplicate, setAllowDuplicate] = useState<boolean>(true);
   const [fileLocks, setFileLocks] = useState<boolean[]>([]);
   const [arrangeVideoMeta, setArrangeVideoMeta] = useState<Record<string, ArrangeVideoMeta>>({});
+  // Phase 1: per-clip edits keyed by file path. Duplicate clips share edits.
+  const [clipEditsByPath, setClipEditsByPath] = useState<Record<string, IClipEdit>>({});
+  const [editingClipPath, setEditingClipPath] = useState<string | null>(null);
   const [previewVideoIndex, setPreviewVideoIndex] = useState<number>(0);
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
@@ -422,6 +441,16 @@ const App: React.FC = () => {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', appTheme);
   }, [appTheme]);
+
+  useEffect(() => {
+    if (!mergeComplete) {
+      return;
+    }
+
+    setPostMergeYtTitle(ytTitle);
+    setPostMergeYtDescription(ytDescription);
+    setPostMergeYtPrivacy(ytPrivacy);
+  }, [mergeComplete]);
 
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -578,6 +607,7 @@ const App: React.FC = () => {
 
   const handleGoogleLogin = async (source: 'welcome' | 'dashboard' = 'welcome') => {
     console.debug('[Auth][Renderer] Google sign-in clicked', { source, step, isLoggedIn });
+    setAuthError('');
     setStatus('');
     try {
       const result = await window.electronAPI.googleOAuthLogin();
@@ -588,27 +618,28 @@ const App: React.FC = () => {
         error: result?.error || null,
       });
       if (result.success && result.user) {
+        setAuthError('');
         setIsLoggedIn(true);
         setGoogleUser(result.user);
         // Advance only if the user is on the welcome screen; keep dashboard open otherwise.
         setStep((prev) => (prev === 0 ? 1 : prev));
         return true;
       }
-      setStatus(result?.error ? `Google sign-in failed: ${result.error}` : 'Google sign-in failed. Please try again.');
+      const message = result?.error ? `Google sign-in failed: ${result.error}` : 'Google sign-in failed. Please try again.';
+      setAuthError(message);
+      setStatus(message);
       return false;
     } catch (err: any) {
       console.error('[Auth][Renderer] googleOAuthLogin threw', err);
-      setStatus(err?.message ? `Google sign-in failed: ${err.message}` : 'Google sign-in failed. Check your internet connection and try again.');
+      const message = err?.message ? `Google sign-in failed: ${err.message}` : 'Google sign-in failed. Check your internet connection and try again.';
+      setAuthError(message);
+      setStatus(message);
       return false;
     }
   };
 
   const handleGoogleLoginFromWelcome = () => {
     void handleGoogleLogin('welcome');
-  };
-
-  const handleGoogleLoginFromDashboard = () => {
-    void handleGoogleLogin('dashboard');
   };
 
   const handleSkipLogin = async () => {
@@ -618,6 +649,7 @@ const App: React.FC = () => {
     } catch {
       // Continue in guest mode even if logout IPC fails.
     }
+    setAuthError('');
     setIsLoggedIn(false);
     setGoogleUser(null);
     setStep(1);
@@ -625,6 +657,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await window.electronAPI.googleOAuthLogout();
+    setAuthError('');
     setIsLoggedIn(false);
     setGoogleUser(null);
   };
@@ -781,8 +814,29 @@ const App: React.FC = () => {
     setPreviewReloadToken((current) => current + 1);
   };
 
-  const handlePreviewPlaybackError = () => {
-    setStatus('Preview could not be played for this clip. The file may use an unsupported stream layout on this machine.');
+  const handlePreviewPlaybackError = (
+    event: React.SyntheticEvent<HTMLVideoElement>,
+  ) => {
+    const el = event.currentTarget;
+    const err = el.error;
+    const codeMap: Record<number, string> = {
+      1: 'aborted',
+      2: 'network',
+      3: 'decode',
+      4: 'src not supported (codec/container)',
+    };
+    const code = err?.code ?? 0;
+    const label = codeMap[code] || 'unknown';
+    const detail = err?.message ? ` — ${err.message}` : '';
+    console.error('[Preview] HTMLMediaError', {
+      code,
+      label,
+      message: err?.message,
+      src: el.currentSrc,
+    });
+    setStatus(
+      `Preview failed (${label}${detail}). Chromium may not decode this codec; merge can still process it via FFmpeg.`,
+    );
   };
 
   useEffect(() => {
@@ -1089,10 +1143,38 @@ const App: React.FC = () => {
           : standardization.fps,
     };
 
+    const clipEditsPayload = selectedFiles.map(
+      (path) => clipEditsByPath[path] ?? {},
+    );
+    const hasAnyEdits = clipEditsPayload.some(
+      (edit) => Object.keys(edit).length > 0,
+    );
+
     const result = await window.electronAPI.mergeVideos({
       inputPaths: selectedFiles,
       outputPath: resolvedOutputPath,
       standardization: effectiveStandardization,
+      ...(hasAnyEdits ? { clipEdits: clipEditsPayload } : {}),
+      ...(loudnormEnabled
+        ? { loudnorm: { enabled: true, targetLufs: loudnormTarget } }
+        : {}),
+      ...(autoSilenceTrimEnabled
+        ? {
+            autoSilenceTrim: {
+              enabled: true,
+              thresholdDb: silenceThresholdDb,
+            },
+          }
+        : {}),
+      ...(captionsEnabled
+        ? {
+            captions: {
+              enabled: true,
+              model: captionModel,
+              language: captionLanguage,
+            },
+          }
+        : {}),
     });
 
     if (mergeCancelledRef.current) {
@@ -1142,17 +1224,25 @@ const App: React.FC = () => {
   };
 
   const handleUploadToYouTube = async () => {
-    if (!outputPath || !ytTitle) {
+    const effectiveTitle = (mergeComplete ? postMergeYtTitle : ytTitle).trim();
+    const effectiveDescription = mergeComplete ? postMergeYtDescription : ytDescription;
+    const effectivePrivacy = mergeComplete ? postMergeYtPrivacy : ytPrivacy;
+
+    if (!outputPath || !effectiveTitle) {
       setStatus('Please provide a title for the YouTube upload.');
       return;
     }
+
+    setYtTitle(effectiveTitle);
+    setYtDescription(effectiveDescription);
+    setYtPrivacy(effectivePrivacy);
     setIsUploading(true);
     setStatus('Uploading to YouTube...');
     const result = await window.electronAPI.uploadToYouTube({
       filePath: outputPath,
-      title: ytTitle,
-      description: ytDescription,
-      privacy: ytPrivacy,
+      title: effectiveTitle,
+      description: effectiveDescription,
+      privacy: effectivePrivacy,
       categoryId: ytCategoryId || undefined,
       tags: ytTags
         .split(',')
@@ -1270,6 +1360,9 @@ const App: React.FC = () => {
     setYtLicense('youtube');
     setYtEmbeddable(true);
     setYtPublicStatsViewable(true);
+    setPostMergeYtTitle('');
+    setPostMergeYtDescription('');
+    setPostMergeYtPrivacy('private');
     setUploadResult(null);
     setStandardization({ resolution: 'original', fps: 'original' });
     setFileLocks([]);
@@ -1366,6 +1459,7 @@ const App: React.FC = () => {
                   <GoogleLogoIcon className="icon-inline" />
                   <span>Sign in with Google</span>
                 </button>
+                {authError && <p className="auth-error-text">{authError}</p>}
                 <button className="btn btn-ghost auth-btn" onClick={handleSkipLogin}>
                   Continue without account
                 </button>
@@ -1415,7 +1509,8 @@ const App: React.FC = () => {
               onOutputNameTemplateChange={setOutputNameTemplate}
               onYouTubeSettingsSync={syncFinalizeYouTubeFromSettings}
               onLogout={handleLogout}
-              onLogin={handleGoogleLoginFromDashboard}
+              authError={authError}
+              onLogin={() => handleGoogleLogin('dashboard')}
             />
           </main>
         </div>
@@ -1474,6 +1569,31 @@ const App: React.FC = () => {
         </div>
 
         <main className="wizard-main">
+          {ffmpegDetails && !ffmpegDetails.available && (
+            <div className="ffmpeg-banner ffmpeg-banner-error" role="alert">
+              <span className="material-symbols-rounded vm-icon" aria-hidden="true">
+                error
+              </span>
+              <div className="ffmpeg-banner-body">
+                <strong>FFmpeg not found.</strong> Merging is disabled until FFmpeg
+                is installed. Install from
+                {' '}
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.electronAPI.openExternal?.(
+                      'https://www.gyan.dev/ffmpeg/builds/',
+                    );
+                  }}
+                >
+                  gyan.dev (Windows)
+                </a>
+                {' '}
+                or your package manager, then restart the app.
+              </div>
+            </div>
+          )}
           {mergeComplete ? (
             <section className="panel success-panel fade-in">
               <h2>Merge complete 🎉</h2>
@@ -1494,17 +1614,17 @@ const App: React.FC = () => {
                   <div className="yt-config">
                     <label>
                       Title *
-                      <input type="text" value={ytTitle} onChange={e => setYtTitle(e.target.value)}
+                      <input type="text" value={postMergeYtTitle} onChange={e => setPostMergeYtTitle(e.target.value)}
                         placeholder="Enter video title" className="yt-input" />
                     </label>
                     <label>
                       Description
-                      <textarea value={ytDescription} onChange={e => setYtDescription(e.target.value)}
+                      <textarea value={postMergeYtDescription} onChange={e => setPostMergeYtDescription(e.target.value)}
                         placeholder="Enter description" className="yt-input" rows={3} />
                     </label>
                     <label>
                       Privacy
-                      <select value={ytPrivacy} onChange={e => setYtPrivacy(e.target.value)} className="std-select">
+                      <select value={postMergeYtPrivacy} onChange={e => setPostMergeYtPrivacy(e.target.value)} className="std-select">
                         <option value="private">Private</option>
                         <option value="unlisted">Unlisted</option>
                         <option value="public">Public</option>
@@ -1513,7 +1633,7 @@ const App: React.FC = () => {
                     <button
                       className="btn btn-primary"
                       onClick={handleUploadToYouTube}
-                      disabled={isUploading || !ytTitle}
+                      disabled={isUploading || !postMergeYtTitle.trim()}
                     >
                       <span className="material-symbols-rounded vm-icon icon-inline" aria-hidden="true">smart_display</span>
                       <span>{isUploading ? 'Uploading...' : 'Upload to YouTube'}</span>
@@ -1654,9 +1774,14 @@ const App: React.FC = () => {
                     </aside>
 
                     <div className="sequence-list">
-                      {selectedFileNames.map((file, index) => (
+                      {selectedFileNames.map((file, index) => {
+                        const clipPath = selectedFiles[index];
+                        const isEditing = editingClipPath === clipPath;
+                        const clipEdit = clipEditsByPath[clipPath] ?? {};
+                        const hasEdits = Object.keys(clipEdit).length > 0;
+                        return (
+                        <React.Fragment key={`${file}-${index}`}>
                         <div
-                          key={`${file}-${index}`}
                           className={`sequence-item ${index === previewVideoIndex ? 'sequence-item-active' : ''}`}
                           draggable={!isArrangementLockMode || !fileLocks[index]}
                           onClick={() => handleSelectPreview(index)}
@@ -1718,6 +1843,21 @@ const App: React.FC = () => {
                               <span className="material-symbols-rounded vm-icon" aria-hidden="true">arrow_downward</span>
                             </button>
                             <button
+                              className={`mini-btn mini-btn-icon ${hasEdits ? 'mini-btn-lock-active' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingClipPath((prev) =>
+                                  prev === clipPath ? null : clipPath,
+                                );
+                              }}
+                              disabled={isMerging}
+                              title={hasEdits ? 'Edit clip (has edits)' : 'Edit clip'}
+                            >
+                              <span className="material-symbols-rounded vm-icon" aria-hidden="true">
+                                tune
+                              </span>
+                            </button>
+                            <button
                               className="file-remove"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1730,7 +1870,30 @@ const App: React.FC = () => {
                             </button>
                           </div>
                         </div>
-                      ))}
+                        {isEditing && (
+                          <ClipEditPanel
+                            durationSec={arrangeVideoMeta[clipPath]?.duration ?? 0}
+                            edit={clipEdit}
+                            disabled={isMerging}
+                            onChange={(next) =>
+                              setClipEditsByPath((prev) => ({
+                                ...prev,
+                                [clipPath]: next,
+                              }))
+                            }
+                            onReset={() =>
+                              setClipEditsByPath((prev) => {
+                                const copy = { ...prev };
+                                delete copy[clipPath];
+                                return copy;
+                              })
+                            }
+                            onClose={() => setEditingClipPath(null)}
+                          />
+                        )}
+                        </React.Fragment>
+                        );
+                      })}
                     </div>
                   </div>
                 </section>
@@ -1914,7 +2077,217 @@ const App: React.FC = () => {
                               />
                             </label>
                           )}
+
+                          <div className="loudnorm-block" style={{ marginTop: 14 }}>
+                            <label className="loudnorm-toggle">
+                              <input
+                                type="checkbox"
+                                checked={loudnormEnabled}
+                                onChange={(e) => setLoudnormEnabled(e.target.checked)}
+                                disabled={isMerging}
+                              />
+                              <span>
+                                Normalize audio loudness across all clips (EBU R128)
+                              </span>
+                            </label>
+                            {loudnormEnabled && (
+                              <label
+                                className="advanced-standardization-field"
+                                style={{ marginTop: 8 }}
+                              >
+                                Target loudness (LUFS)
+                                <select
+                                  className="std-select"
+                                  value={loudnormTarget}
+                                  onChange={(e) =>
+                                    setLoudnormTarget(Number(e.target.value))
+                                  }
+                                  disabled={isMerging}
+                                >
+                                  <option value={-14}>-14 LUFS (YouTube / Spotify)</option>
+                                  <option value={-16}>-16 LUFS (Apple Podcasts, streaming default)</option>
+                                  <option value={-18}>-18 LUFS (AES streaming)</option>
+                                  <option value={-23}>-23 LUFS (EBU R128 broadcast)</option>
+                                </select>
+                              </label>
+                            )}
+                          </div>
+
+                          <div className="loudnorm-block" style={{ marginTop: 14 }}>
+                            <label className="loudnorm-toggle">
+                              <input
+                                type="checkbox"
+                                checked={autoSilenceTrimEnabled}
+                                onChange={(e) => setAutoSilenceTrimEnabled(e.target.checked)}
+                                disabled={isMerging}
+                              />
+                              <span>
+                                Auto-trim leading &amp; trailing silence from each clip
+                              </span>
+                            </label>
+                            {autoSilenceTrimEnabled && (
+                              <label
+                                className="advanced-standardization-field"
+                                style={{ marginTop: 8 }}
+                              >
+                                Silence threshold (dB)
+                                <select
+                                  className="std-select"
+                                  value={silenceThresholdDb}
+                                  onChange={(e) =>
+                                    setSilenceThresholdDb(Number(e.target.value))
+                                  }
+                                  disabled={isMerging}
+                                >
+                                  <option value={-40}>-40 dB (aggressive — trims room tone)</option>
+                                  <option value={-50}>-50 dB (default — trims clear silence)</option>
+                                  <option value={-60}>-60 dB (gentle — trims only digital silence)</option>
+                                </select>
+                              </label>
+                            )}
+                          </div>
+
+                          <div className="loudnorm-block" style={{ marginTop: 14 }}>
+                            <label className="loudnorm-toggle">
+                              <input
+                                type="checkbox"
+                                checked={captionsEnabled}
+                                onChange={(e) => setCaptionsEnabled(e.target.checked)}
+                                disabled={isMerging}
+                              />
+                              <span>
+                                Auto-generate captions (.srt sidecar, offline via faster-whisper)
+                              </span>
+                            </label>
+                            {captionsEnabled && (
+                              <>
+                                <label
+                                  className="advanced-standardization-field"
+                                  style={{ marginTop: 8 }}
+                                >
+                                  Model size
+                                  <select
+                                    className="std-select"
+                                    value={captionModel}
+                                    onChange={(e) => setCaptionModel(e.target.value)}
+                                    disabled={isMerging}
+                                  >
+                                    <option value="tiny">tiny (~39 MB, fastest, lowest accuracy)</option>
+                                    <option value="base">base (~74 MB, balanced default)</option>
+                                    <option value="small">small (~244 MB, more accurate)</option>
+                                    <option value="medium">medium (~769 MB, slower)</option>
+                                    <option value="large-v3">large-v3 (~1.5 GB, slowest, best)</option>
+                                  </select>
+                                </label>
+                                <label
+                                  className="advanced-standardization-field"
+                                  style={{ marginTop: 8 }}
+                                >
+                                  Language
+                                  <select
+                                    className="std-select"
+                                    value={captionLanguage}
+                                    onChange={(e) => setCaptionLanguage(e.target.value)}
+                                    disabled={isMerging}
+                                  >
+                                    <option value="auto">Auto-detect</option>
+                                    <option value="en">English</option>
+                                    <option value="fil">Filipino / Tagalog</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="fr">French</option>
+                                    <option value="de">German</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="ko">Korean</option>
+                                    <option value="zh">Chinese</option>
+                                  </select>
+                                </label>
+                                <p
+                                  style={{
+                                    margin: '6px 0 0',
+                                    fontSize: '0.78rem',
+                                    color: 'var(--olive-300)',
+                                  }}
+                                >
+                                  First use of each model downloads it (~MB shown above).
+                                  Output: <code>&lt;merged-output&gt;.srt</code> next to the video.
+                                </p>
+                              </>
+                            )}
+                          </div>
                         </details>
+                      </div>
+
+                      <div className="preview-block">
+                        <h3>Auto-enhance</h3>
+                        <p className="auto-enhance-tagline">
+                          Pick the smart-assist features you want. Click each chip
+                          to toggle it on or off, or use the buttons below to flip
+                          all of them at once. Open the advanced section above to
+                          tune their individual parameters.
+                        </p>
+                        <div className="auto-enhance-chips">
+                          <button
+                            type="button"
+                            className={`auto-enhance-chip ${loudnormEnabled ? 'auto-enhance-chip-on' : ''}`}
+                            onClick={() => setLoudnormEnabled((v) => !v)}
+                            disabled={isMerging}
+                            aria-pressed={loudnormEnabled}
+                          >
+                            {loudnormEnabled ? '✓' : '○'} Loudness normalize
+                          </button>
+                          <button
+                            type="button"
+                            className={`auto-enhance-chip ${autoSilenceTrimEnabled ? 'auto-enhance-chip-on' : ''}`}
+                            onClick={() => setAutoSilenceTrimEnabled((v) => !v)}
+                            disabled={isMerging}
+                            aria-pressed={autoSilenceTrimEnabled}
+                          >
+                            {autoSilenceTrimEnabled ? '✓' : '○'} Silence auto-trim
+                          </button>
+                          <button
+                            type="button"
+                            className={`auto-enhance-chip ${captionsEnabled ? 'auto-enhance-chip-on' : ''}`}
+                            onClick={() => setCaptionsEnabled((v) => !v)}
+                            disabled={isMerging}
+                            aria-pressed={captionsEnabled}
+                          >
+                            {captionsEnabled ? '✓' : '○'} Auto-captions
+                          </button>
+                        </div>
+                        <div className="auto-enhance-row">
+                          <button
+                            className="btn btn-primary auto-enhance-btn"
+                            type="button"
+                            onClick={() => {
+                              setLoudnormEnabled(true);
+                              setAutoSilenceTrimEnabled(true);
+                              setCaptionsEnabled(true);
+                            }}
+                            disabled={isMerging}
+                          >
+                            <span className="material-symbols-rounded vm-icon" aria-hidden="true">
+                              auto_fix_high
+                            </span>
+                            Enable all
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            type="button"
+                            onClick={() => {
+                              setLoudnormEnabled(false);
+                              setAutoSilenceTrimEnabled(false);
+                              setCaptionsEnabled(false);
+                            }}
+                            disabled={
+                              isMerging ||
+                              (!loudnormEnabled &&
+                                !autoSilenceTrimEnabled &&
+                                !captionsEnabled)
+                            }
+                          >
+                            Disable all
+                          </button>
+                        </div>
                       </div>
 
                       <div className="preview-block">
@@ -2164,7 +2537,8 @@ interface DashboardPanelProps {
     presets: YouTubeQuickPreset[];
   }) => void;
   onLogout: () => void;
-  onLogin: () => void;
+  authError: string;
+  onLogin: () => Promise<boolean>;
 }
 
 interface UserAvatarProps {
@@ -2198,7 +2572,7 @@ const UserAvatar: React.FC<UserAvatarProps> = ({ user, size }) => {
 
 const DashboardPanel: React.FC<DashboardPanelProps> = ({
   isLoggedIn, googleUser, ffmpegDetails, standardization, initialTab, appTheme, defaultOutputDir, outputNameTemplate,
-  onStandardizationChange, onThemeChange, onDefaultOutputDirChange, onOutputNameTemplateChange, onYouTubeSettingsSync, onLogout, onLogin
+  onStandardizationChange, onThemeChange, onDefaultOutputDirChange, onOutputNameTemplateChange, onYouTubeSettingsSync, onLogout, authError, onLogin
 }) => {
   const [settings, setSettings] = useState<any>({
     appTheme: appTheme,
@@ -2617,10 +2991,11 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
             {!isLoggedIn ? (
               <div>
                 <div className="empty-state">Sign in with Google to configure YouTube settings.</div>
-                <button className="btn btn-primary" type="button" style={{ marginTop: 12 }} onClick={onLogin}>
+                <button className="btn btn-primary" type="button" style={{ marginTop: 12 }} onClick={() => { void onLogin(); }}>
                   <GoogleLogoIcon className="icon-inline" />
                   <span>Sign in with Google</span>
                 </button>
+                {authError && <p className="auth-error-text" style={{ marginTop: 10 }}>{authError}</p>}
               </div>
             ) : (
               <>
@@ -2927,10 +3302,11 @@ const DashboardPanel: React.FC<DashboardPanelProps> = ({
             ) : (
               <div>
                 <p className="panel-subtitle">Not signed in. YouTube features are disabled.</p>
-                <button className="btn btn-primary" onClick={onLogin}>
+                <button className="btn btn-primary" onClick={() => { void onLogin(); }}>
                   <GoogleLogoIcon className="icon-inline" />
                   <span>Sign in with Google</span>
                 </button>
+                {authError && <p className="auth-error-text" style={{ marginTop: 10 }}>{authError}</p>}
               </div>
             )}
           </div>

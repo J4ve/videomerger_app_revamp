@@ -56,6 +56,22 @@ describe('App', () => {
       await skipAuth();
       expect(screen.getByText('Add your videos')).toBeInTheDocument();
     });
+
+    it('shows auth error when google sign-in fails', async () => {
+      mockElectronAPI.googleOAuthLogin.mockResolvedValueOnce({
+        success: false,
+        error: 'OAuth callback server error: listen EADDRINUSE',
+      });
+
+      render(<App />);
+      await waitFor(() => expect(screen.getByText('Sign in with Google')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('Sign in with Google'));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Google sign-in failed: OAuth callback server error/i)).toBeInTheDocument();
+      });
+    });
   });
 
   // ─── Step 1: Add Videos ───
@@ -290,6 +306,44 @@ describe('App', () => {
       fireEvent.click(screen.getByText('✕ Close'));
       await waitFor(() => expect(screen.getByText('Finalize and merge')).toBeInTheDocument());
       expect(screen.getByText('Advanced settings')).toBeInTheDocument();
+    });
+
+    it('allows editing title/description/privacy after merge complete and uploads edited values', async () => {
+      await goToStep3LoggedIn();
+
+      fireEvent.click(screen.getByText('Start Merge'));
+
+      await waitFor(() => expect(mockElectronAPI.onProcessingEvent).toHaveBeenCalled());
+      const processingCallback = mockElectronAPI.onProcessingEvent.mock.calls[0]?.[0];
+      expect(typeof processingCallback).toBe('function');
+
+      processingCallback({
+        type: 'complete',
+        message: 'done',
+        result: { outputPath: 'C:\\merged.mp4' },
+      });
+
+      await waitFor(() => expect(screen.getByText('Merge complete 🎉')).toBeInTheDocument());
+
+      const titleInput = screen.getByPlaceholderText('Enter video title') as HTMLInputElement;
+      const descriptionInput = screen.getByPlaceholderText('Enter description') as HTMLTextAreaElement;
+      const privacySelect = screen.getByDisplayValue('Private') as HTMLSelectElement;
+
+      fireEvent.change(titleInput, { target: { value: 'Edited Title' } });
+      fireEvent.change(descriptionInput, { target: { value: 'Edited Description' } });
+      fireEvent.change(privacySelect, { target: { value: 'unlisted' } });
+
+      expect(titleInput.value).toBe('Edited Title');
+      expect(descriptionInput.value).toBe('Edited Description');
+      expect(privacySelect.value).toBe('unlisted');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Upload to YouTube' }));
+
+      await waitFor(() => expect(mockElectronAPI.uploadToYouTube).toHaveBeenCalled());
+      const uploadPayload = mockElectronAPI.uploadToYouTube.mock.calls.at(-1)?.[0];
+      expect(uploadPayload.title).toBe('Edited Title');
+      expect(uploadPayload.description).toBe('Edited Description');
+      expect(uploadPayload.privacy).toBe('unlisted');
     });
   });
 });

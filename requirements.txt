@@ -6,10 +6,17 @@ Werkzeug==3.0.1
 ffmpeg-python==0.2.0
 moviepy==1.0.3
 
+# Auto-captioning (Phase 4)
+# faster-whisper bundles CTranslate2 + tokenizers; first transcription
+# downloads the chosen Whisper model (default `base` ~ 74 MB) into the
+# Hugging Face cache and reuses it across runs.
+faster-whisper==1.0.3
+
 # Testing
 pytest==7.4.3
 pytest-cov==4.1.0
 pytest-flask==1.3.0
+pytest-benchmark==4.0.0
 
 # Code quality
 black==23.12.1

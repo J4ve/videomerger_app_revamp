@@ -53,15 +53,93 @@ function parseDotEnvFile(filePath: string): Record<string, string> {
   return result;
 }
 
+function getEnvSearchDirectories(): string[] {
+  const directories: string[] = [];
+  const resourcesPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
+  const execDir = process.execPath ? path.dirname(process.execPath) : '';
+
+  directories.push(process.cwd());
+  if (execDir) {
+    directories.push(execDir);
+    directories.push(path.join(execDir, 'resources'));
+    directories.push(path.join(execDir, 'resources', 'runtime-config'));
+    directories.push(path.join(execDir, 'resources', 'resources'));
+    directories.push(path.join(execDir, 'resources', 'resources', 'runtime-config'));
+  }
+  if (resourcesPath) {
+    directories.push(resourcesPath);
+    directories.push(path.join(resourcesPath, 'runtime-config'));
+    directories.push(path.join(resourcesPath, 'resources'));
+    directories.push(path.join(resourcesPath, 'resources', 'runtime-config'));
+  }
+
+  return Array.from(new Set(directories.filter(Boolean)));
+}
+
+function findBundledGoogleClientJsonPath(): string | null {
+  const exactCandidates = [
+    'google-oauth-client.json',
+    'oauth-client.json',
+    'client_secret.json',
+  ];
+
+  for (const dir of getEnvSearchDirectories()) {
+    for (const fileName of exactCandidates) {
+      const candidate = path.join(dir, fileName);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const matched = entries.find((entry) => entry.isFile() && /^client_secret.*\.json$/i.test(entry.name));
+      if (matched) {
+        return path.join(dir, matched.name);
+      }
+    } catch {
+      // Ignore unreadable directories.
+    }
+  }
+
+  return null;
+}
+
 function loadMergedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  const cwd = process.cwd();
-  const envFromFile = parseDotEnvFile(path.join(cwd, '.env'));
-  const envLocalFromFile = parseDotEnvFile(path.join(cwd, '.env.local'));
+  let fileEnv: Record<string, string> = {};
+  const directories = getEnvSearchDirectories();
+
+  for (const dir of directories) {
+    fileEnv = {
+      ...fileEnv,
+      ...parseDotEnvFile(path.join(dir, '.env')),
+      ...parseDotEnvFile(path.join(dir, '.env.local')),
+    };
+  }
+
   return {
-    ...envFromFile,
-    ...envLocalFromFile,
+    ...fileEnv,
     ...(env as Record<string, string>),
   };
+}
+
+function resolveFromEnvSearchDirectories(targetPath: string): string | null {
+  if (!targetPath) {
+    return null;
+  }
+
+  if (path.isAbsolute(targetPath)) {
+    return targetPath;
+  }
+
+  for (const dir of getEnvSearchDirectories()) {
+    const candidate = path.join(dir, targetPath);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return path.join(process.cwd(), targetPath);
 }
 
 function readGoogleClientJson(mergedEnv: Record<string, string>): GoogleClientSecretJson | null {
@@ -75,15 +153,15 @@ function readGoogleClientJson(mergedEnv: Record<string, string>): GoogleClientSe
   }
 
   const jsonFilePath = mergedEnv.GOOGLE_OAUTH_CLIENT_JSON_FILE;
-  if (!jsonFilePath) {
+  const resolved = jsonFilePath
+    ? resolveFromEnvSearchDirectories(jsonFilePath)
+    : findBundledGoogleClientJsonPath();
+
+  if (!jsonFilePath && !resolved) {
     return null;
   }
 
-  const resolved = path.isAbsolute(jsonFilePath)
-    ? jsonFilePath
-    : path.join(process.cwd(), jsonFilePath);
-
-  if (!fs.existsSync(resolved)) {
+  if (!resolved || !fs.existsSync(resolved)) {
     throw new Error(`GOOGLE_OAUTH_CLIENT_JSON_FILE not found: ${resolved}`);
   }
 

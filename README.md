@@ -32,7 +32,7 @@ A professional desktop solution for merging multiple video files with ease. Feat
 
 - **Python 3.8+** (for video processing)
 - **Node.js 18+** & **npm** (for desktop UI)
-- **FFmpeg** (packaged with the app, but optional for system-wide use)
+- **FFmpeg** — **not required for development**. `npm install` automatically downloads platform-appropriate `ffmpeg` + `ffprobe` binaries via `ffmpeg-static` / `ffprobe-static` and copies them into `resources/ffmpeg/`. For packaged installers (`docker compose run builder`) a manual `ffmpeg.zip` is still required (see Build & Package section).
 - **Docker Desktop** (optional, recommended for isolated builds)
 
 ## 🚀 Quick Start
@@ -45,22 +45,42 @@ A professional desktop solution for merging multiple video files with ease. Feat
 
 2. **Install Dependencies**
    ```bash
-   npm install        # Node.js
+   npm install        # Node.js (also runs postinstall to fetch FFmpeg binaries for dev)
    pip install -r requirements.txt  # Python
    ```
+
+   The `postinstall` hook calls `scripts/install-ffmpeg.js`, which copies the
+   `ffmpeg-static` / `ffprobe-static` binaries from `node_modules/` into
+   `resources/ffmpeg/`. After the install completes, `resources/ffmpeg/ffmpeg.exe`
+   (or the platform equivalent) is ready for `npm run dev`.
 
 3. **Run the App (Development Mode)**
    ```bash
    npm run dev
    ```
 
+   `npm run dev` runs Vite (renderer), `tsc -w` (main process), and
+   `electronmon` (Electron launcher with hot-reload) concurrently. Edits
+   under `renderer/` use Vite HMR; edits under `main/` or `core/` trigger
+   a `tsc` rebuild and `electronmon` auto-restarts the Electron window.
+   No manual rebuild required between iterations.
+
 4. **Build & Package (Production)**
    ```bash
-  npm run package     # Build and package Windows installer
+   npm run package     # Build and package Windows installer
    # OR use Docker for a clean environment-free build:
    docker compose run builder
    ```
-  - Ensure `ffmpeg.zip` is present in the repository root before packaging; the build unzips it and embeds FFmpeg into `resources/ffmpeg/` so the packaged app can run FFmpeg without a system install. Use a Windows static FFmpeg zip (e.g., [gyan.dev "ffmpeg-release-essentials"](https://www.gyan.dev/ffmpeg/builds/)) containing `ffmpeg.exe`, `ffprobe.exe` (ffplay optional) and its DLLs; keep the zip structure unchanged so the build can find `ffmpeg/bin/*.exe`.
+   - The packaged `.exe` does **not** ship the `ffmpeg-static` binaries
+     (they are `devDependencies` and excluded from the installer). For
+     packaged builds, ensure `ffmpeg.zip` is present in the repository
+     root before packaging; the build unzips it and embeds FFmpeg into
+     `resources/ffmpeg/` so the packaged app can run FFmpeg without a
+     system install. Use a Windows static FFmpeg zip
+     (e.g., [gyan.dev "ffmpeg-release-essentials"](https://www.gyan.dev/ffmpeg/builds/))
+     containing `ffmpeg.exe`, `ffprobe.exe` (ffplay optional) and its
+     DLLs; keep the zip structure unchanged so the build can find
+     `ffmpeg/bin/*.exe`.
 
 ## 🐳 Docker Development & Deployment
 
