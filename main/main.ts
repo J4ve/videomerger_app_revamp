@@ -57,10 +57,14 @@ function registerLocalVideoProtocol(): void {
   //
   // The original bug (RangeError: Array buffer allocation failed) came
   // from passing a no-Range request through to net.fetch, which buffers
-  // the full body. To avoid that we synthesize an initial range header
-  // when Chromium does not provide one, so we never load a multi-GB file
-  // into a single buffer.
-  const INITIAL_CHUNK = 16 * 1024 * 1024;
+  // the full body. To avoid that we synthesize a small initial range
+  // header when Chromium does not provide one. 256 KiB is enough for
+  // the MP4 demuxer to read ftyp + decide whether moov is present at
+  // the start of the file. If moov is at the end (NVIDIA ShadowPlay,
+  // OBS raw output, etc.), Chromium then issues an end-range request
+  // for the moov atom — keeping the initial chunk tiny avoids buying
+  // a 16 MiB head-start that is then discarded.
+  const INITIAL_CHUNK = 256 * 1024;
 
   protocol.handle('local-video', async (request) => {
     try {
