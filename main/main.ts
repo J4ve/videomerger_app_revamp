@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, safeStorage } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
@@ -24,6 +24,103 @@ import {
 
 let mainWindow: BrowserWindow | null = null;
 const store = new Store();
+
+/**
+ * Encrypted-at-rest wrapper around the Google auth blob in electron-store.
+ *
+ * Previously the OAuth access + refresh tokens were written to the JSON
+ * config file in clear text, which meant anyone with read access to the
+ * user's profile directory (including loosely-permissioned backup tools)
+ * could exfiltrate them. We now encrypt the entire `googleAuth` payload
+ * through `safeStorage`, which delegates to the OS keychain (DPAPI on
+ * Windows, Keychain on macOS, libsecret on Linux). Plain reads from
+ * older installs are migrated transparently on first access.
+ *
+ * The non-secret `user` profile (name, email, picture) is still stored
+ * unencrypted so the UI can display it without unlocking the keychain.
+ */
+const AUTH_KEY = 'googleAuth';
+const AUTH_PROFILE_KEY = 'googleAuthProfile';
+const AUTH_SECRET_KEY = 'googleAuthSecret';
+
+interface GoogleAuthRecord {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+  user: {
+    id?: string;
+    name?: string;
+    email?: string;
+    picture?: string;
+  };
+}
+
+function safeStorageReady(): boolean {
+  try {
+    return safeStorage.isEncryptionAvailable();
+  } catch {
+    return false;
+  }
+}
+
+function readGoogleAuth(): GoogleAuthRecord | undefined {
+  // Newer encrypted format: { encrypted: base64, profile: {...} }
+  const profile = store.get(AUTH_PROFILE_KEY) as GoogleAuthRecord['user'] | undefined;
+  const encrypted = store.get(AUTH_SECRET_KEY) as string | undefined;
+  if (profile && encrypted && safeStorageReady()) {
+    try {
+      const buf = Buffer.from(encrypted, 'base64');
+      const json = safeStorage.decryptString(buf);
+      const secret = JSON.parse(json) as {
+        accessToken: string;
+        refreshToken?: string;
+        expiresAt: number;
+      };
+      return { ...secret, user: profile };
+    } catch (err) {
+      console.error('[Auth] Failed to decrypt stored auth; clearing.', err);
+      clearGoogleAuth();
+      return undefined;
+    }
+  }
+
+  // Legacy unencrypted format: migrate on read so older installs upgrade
+  // on the next launch without forcing a re-login.
+  const legacy = store.get(AUTH_KEY) as GoogleAuthRecord | undefined;
+  if (legacy && legacy.accessToken) {
+    writeGoogleAuth(legacy);
+    store.delete(AUTH_KEY);
+    console.log('[Auth] Migrated unencrypted Google auth to safeStorage.');
+    return legacy;
+  }
+  return undefined;
+}
+
+function writeGoogleAuth(record: GoogleAuthRecord): void {
+  if (!safeStorageReady()) {
+    console.warn(
+      '[Auth] safeStorage unavailable; falling back to unencrypted store. ' +
+      'On Linux this can happen when no keyring service is running.',
+    );
+    store.set(AUTH_KEY, record);
+    return;
+  }
+  const secret = JSON.stringify({
+    accessToken: record.accessToken,
+    refreshToken: record.refreshToken,
+    expiresAt: record.expiresAt,
+  });
+  const encrypted = safeStorage.encryptString(secret).toString('base64');
+  store.set(AUTH_PROFILE_KEY, record.user);
+  store.set(AUTH_SECRET_KEY, encrypted);
+  store.delete(AUTH_KEY);
+}
+
+function clearGoogleAuth(): void {
+  store.delete(AUTH_KEY);
+  store.delete(AUTH_PROFILE_KEY);
+  store.delete(AUTH_SECRET_KEY);
+}
 
 if (
   process.platform === 'win32' &&
@@ -65,6 +162,14 @@ function registerLocalVideoProtocol(): void {
   // for the moov atom — keeping the initial chunk tiny avoids buying
   // a 16 MiB head-start that is then discarded.
   const INITIAL_CHUNK = 256 * 1024;
+  // Defense-in-depth: only serve files whose extension is in the
+  // supported-video allowlist. Even with contextIsolation, a future
+  // bug that lets the renderer craft arbitrary local-video URLs should
+  // not turn into an arbitrary local-file-read primitive.
+  const ALLOWED_EXTENSIONS = new Set([
+    'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'mpg', 'mpeg',
+    'ts', 'm2ts', 'flv', 'wmv', '3gp', 'ogv', 'vob', 'mxf',
+  ]);
 
   protocol.handle('local-video', async (request) => {
     try {
@@ -75,9 +180,19 @@ function registerLocalVideoProtocol(): void {
       }
 
       const filePath = decodeURIComponent(encodedPath);
+      const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
+      if (!ALLOWED_EXTENSIONS.has(ext)) {
+        return new Response('Unsupported file extension', { status: 400 });
+      }
+      // path.resolve normalises away `..` segments so the requested file
+      // must be expressible as an absolute path that exists on disk; any
+      // attempt to traverse outside of the user-selected directory will
+      // either resolve to a file that doesn't exist or to one whose
+      // extension is filtered above.
+      const resolvedPath = path.resolve(filePath);
       let stat: fs.Stats;
       try {
-        stat = fs.statSync(filePath);
+        stat = fs.statSync(resolvedPath);
       } catch {
         return new Response('File not found', { status: 404 });
       }
@@ -85,7 +200,7 @@ function registerLocalVideoProtocol(): void {
         return new Response('Not a file', { status: 400 });
       }
 
-      const fileUrl = url.pathToFileURL(filePath).toString();
+      const fileUrl = url.pathToFileURL(resolvedPath).toString();
       const rangeHeader = request.headers.get('range');
 
       if (rangeHeader) {
@@ -1006,7 +1121,7 @@ function setupIPC(): void {
             const tokens = await exchangeCodeForTokens(code);
             const userInfo = await fetchGoogleUserInfo(tokens.access_token);
 
-            store.set('googleAuth', {
+            writeGoogleAuth({
               accessToken: tokens.access_token,
               refreshToken: tokens.refresh_token,
               expiresAt: Date.now() + (tokens.expires_in * 1000),
@@ -1064,12 +1179,12 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('google-oauth-logout', async () => {
-    store.delete('googleAuth');
+    clearGoogleAuth();
     return { success: true };
   });
 
   ipcMain.handle('google-auth-status', async () => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth();
     if (auth && auth.accessToken) {
       return {
         isLoggedIn: true,
@@ -1095,7 +1210,7 @@ function setupIPC(): void {
     embeddable?: boolean;
     publicStatsViewable?: boolean;
   }) => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth() as any;
     if (!auth || !auth.accessToken) {
       return { success: false, error: 'Not authenticated with Google' };
     }
@@ -1125,7 +1240,7 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('youtube-account-summary', async () => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth() as any;
     if (!auth || !auth.accessToken) {
       return { success: false, error: 'Not authenticated with Google' };
     }
@@ -1147,7 +1262,7 @@ function setupIPC(): void {
     defaults: Record<string, any>;
     presets: Array<Record<string, any>>;
   }) => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth() as any;
     const userEmail = String(auth?.user?.email || '').trim().toLowerCase();
     if (!auth || !auth.accessToken || !userEmail) {
       return { success: false, error: 'Not authenticated with Google' };
@@ -1165,7 +1280,7 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('youtube-online-presets-load', async () => {
-    const auth = store.get('googleAuth') as any;
+    const auth = readGoogleAuth() as any;
     const userEmail = String(auth?.user?.email || '').trim().toLowerCase();
     if (!auth || !auth.accessToken || !userEmail) {
       return { success: false, error: 'Not authenticated with Google' };
