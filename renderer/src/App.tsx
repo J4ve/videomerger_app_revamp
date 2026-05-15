@@ -286,6 +286,9 @@ const App: React.FC = () => {
   // Phase 2: audio loudness normalization (global toggle, EBU R128 single-pass).
   const [loudnormEnabled, setLoudnormEnabled] = useState<boolean>(false);
   const [loudnormTarget, setLoudnormTarget] = useState<number>(-16);
+  // Phase 3: auto-detect + trim leading/trailing silence per clip.
+  const [autoSilenceTrimEnabled, setAutoSilenceTrimEnabled] = useState<boolean>(false);
+  const [silenceThresholdDb, setSilenceThresholdDb] = useState<number>(-50);
   const [customResolution, setCustomResolution] = useState<string>('');
   const [customFps, setCustomFps] = useState<string>('30');
 
@@ -1150,6 +1153,14 @@ const App: React.FC = () => {
       ...(hasAnyEdits ? { clipEdits: clipEditsPayload } : {}),
       ...(loudnormEnabled
         ? { loudnorm: { enabled: true, targetLufs: loudnormTarget } }
+        : {}),
+      ...(autoSilenceTrimEnabled
+        ? {
+            autoSilenceTrim: {
+              enabled: true,
+              thresholdDb: silenceThresholdDb,
+            },
+          }
         : {}),
     });
 
@@ -2084,6 +2095,40 @@ const App: React.FC = () => {
                                   <option value={-16}>-16 LUFS (Apple Podcasts, streaming default)</option>
                                   <option value={-18}>-18 LUFS (AES streaming)</option>
                                   <option value={-23}>-23 LUFS (EBU R128 broadcast)</option>
+                                </select>
+                              </label>
+                            )}
+                          </div>
+
+                          <div className="loudnorm-block" style={{ marginTop: 14 }}>
+                            <label className="loudnorm-toggle">
+                              <input
+                                type="checkbox"
+                                checked={autoSilenceTrimEnabled}
+                                onChange={(e) => setAutoSilenceTrimEnabled(e.target.checked)}
+                                disabled={isMerging}
+                              />
+                              <span>
+                                Auto-trim leading &amp; trailing silence from each clip
+                              </span>
+                            </label>
+                            {autoSilenceTrimEnabled && (
+                              <label
+                                className="advanced-standardization-field"
+                                style={{ marginTop: 8 }}
+                              >
+                                Silence threshold (dB)
+                                <select
+                                  className="std-select"
+                                  value={silenceThresholdDb}
+                                  onChange={(e) =>
+                                    setSilenceThresholdDb(Number(e.target.value))
+                                  }
+                                  disabled={isMerging}
+                                >
+                                  <option value={-40}>-40 dB (aggressive — trims room tone)</option>
+                                  <option value={-50}>-50 dB (default — trims clear silence)</option>
+                                  <option value={-60}>-60 dB (gentle — trims only digital silence)</option>
                                 </select>
                               </label>
                             )}

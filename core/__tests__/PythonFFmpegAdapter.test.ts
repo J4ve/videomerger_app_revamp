@@ -193,6 +193,42 @@ describe('PythonFFmpegAdapter clipEdits handling', () => {
     expect(callArgs).not.toContain('--loudnorm');
   });
 
+  it('forwards autoSilenceTrim flag with custom threshold + min duration', async () => {
+    const spawner = createMockSpawner();
+    const adapter = new PythonFFmpegAdapter(spawner, createConfig());
+
+    await adapter.mergeVideos({
+      inputPaths: ['a.mp4', 'b.mp4'],
+      outputPath: 'out.mp4',
+      autoSilenceTrim: {
+        enabled: true,
+        thresholdDb: -40,
+        minDurationSec: 1.0,
+      },
+    });
+
+    const callArgs = (spawner.spawn as any).mock.calls[0][1] as string[];
+    expect(callArgs).toContain('--auto-silence-trim');
+    expect(callArgs).toContain('--silence-threshold-db');
+    expect(callArgs[callArgs.indexOf('--silence-threshold-db') + 1]).toBe('-40');
+    expect(callArgs).toContain('--silence-min-duration');
+    expect(callArgs[callArgs.indexOf('--silence-min-duration') + 1]).toBe('1');
+  });
+
+  it('omits autoSilenceTrim flags when disabled', async () => {
+    const spawner = createMockSpawner();
+    const adapter = new PythonFFmpegAdapter(spawner, createConfig());
+
+    await adapter.mergeVideos({
+      inputPaths: ['a.mp4', 'b.mp4'],
+      outputPath: 'out.mp4',
+      autoSilenceTrim: { enabled: false, thresholdDb: -40 },
+    });
+
+    const callArgs = (spawner.spawn as any).mock.calls[0][1] as string[];
+    expect(callArgs).not.toContain('--auto-silence-trim');
+  });
+
   it('still cleans up the tempfile when the spawn rejects', async () => {
     let capturedJsonPath: string | undefined;
     const spawner: IProcessSpawner = {

@@ -247,6 +247,101 @@ class TestLoudnorm:
 
 
 @pytest.mark.unit
+class TestSilenceEventParsing:
+    def test_empty_log_returns_empty_list(self):
+        assert vp._parse_silence_events('') == []
+
+    def test_no_silence_lines_returns_empty(self):
+        log = 'ffmpeg version 6.x\nframe= 100 fps=30\n'
+        assert vp._parse_silence_events(log) == []
+
+    def test_single_complete_silence_event(self):
+        log = (
+            '[silencedetect @ 0xaa] silence_start: 0\n'
+            '[silencedetect @ 0xaa] silence_end: 2.34 | silence_duration: 2.34\n'
+        )
+        assert vp._parse_silence_events(log) == [(0.0, 2.34)]
+
+    def test_multiple_silence_events(self):
+        log = (
+            '[silencedetect @ 0xaa] silence_start: 0\n'
+            '[silencedetect @ 0xaa] silence_end: 1.5 | silence_duration: 1.5\n'
+            'random ffmpeg output\n'
+            '[silencedetect @ 0xaa] silence_start: 100.0\n'
+            '[silencedetect @ 0xaa] silence_end: 101.2 | silence_duration: 1.2\n'
+        )
+        assert vp._parse_silence_events(log) == [(0.0, 1.5), (100.0, 101.2)]
+
+    def test_unclosed_trailing_silence_keeps_none_end(self):
+        log = (
+            '[silencedetect @ 0xaa] silence_start: 0\n'
+            '[silencedetect @ 0xaa] silence_end: 1.0 | silence_duration: 1.0\n'
+            '[silencedetect @ 0xaa] silence_start: 295.0\n'
+        )
+        events = vp._parse_silence_events(log)
+        assert events == [(0.0, 1.0), (295.0, None)]
+
+    def test_negative_start_times_are_preserved(self):
+        # Older ffmpeg builds occasionally emit small negative starts; the
+        # caller is responsible for clamping, not the parser.
+        log = '[silencedetect @ 0xaa] silence_start: -0.001\n'
+        assert vp._parse_silence_events(log) == [(-0.001, None)]
+
+
+@pytest.mark.unit
+class TestAugmentEditsWithSilenceTrim:
+    def test_clip_without_silence_is_unchanged(self, monkeypatch):
+        monkeypatch.setattr(
+            vp, 'detect_silence_boundaries', lambda *a, **kw: (0.0, 0.0),
+        )
+        edits = [{}, {}]
+        vp._augment_edits_with_silence_trim(
+            ['a.mp4', 'b.mp4'], edits, [10.0, 20.0],
+            threshold_db=-50, min_duration=0.5,
+        )
+        assert edits == [{}, {}]
+
+    def test_leading_and_trailing_silence_adds_to_trim(self, monkeypatch):
+        monkeypatch.setattr(
+            vp, 'detect_silence_boundaries',
+            lambda path, **kw: (1.5, 0.8),
+        )
+        edits = [{}]
+        vp._augment_edits_with_silence_trim(
+            ['a.mp4'], edits, [60.0],
+            threshold_db=-50, min_duration=0.5,
+        )
+        assert edits[0]['trimStart'] == 1.5
+        assert edits[0]['trimEnd'] == 0.8
+
+    def test_silence_is_added_on_top_of_manual_trim(self, monkeypatch):
+        monkeypatch.setattr(
+            vp, 'detect_silence_boundaries',
+            lambda path, **kw: (2.0, 1.0),
+        )
+        edits = [{'trimStart': 0.5, 'trimEnd': 0.5}]
+        vp._augment_edits_with_silence_trim(
+            ['a.mp4'], edits, [60.0],
+            threshold_db=-50, min_duration=0.5,
+        )
+        assert edits[0]['trimStart'] == 2.5
+        assert edits[0]['trimEnd'] == 1.5
+
+    def test_malformed_existing_trim_treated_as_zero(self, monkeypatch):
+        monkeypatch.setattr(
+            vp, 'detect_silence_boundaries',
+            lambda path, **kw: (1.0, 1.0),
+        )
+        edits = [{'trimStart': 'oops', 'trimEnd': None}]
+        vp._augment_edits_with_silence_trim(
+            ['a.mp4'], edits, [60.0],
+            threshold_db=-50, min_duration=0.5,
+        )
+        assert edits[0]['trimStart'] == 1.0
+        assert edits[0]['trimEnd'] == 1.0
+
+
+@pytest.mark.unit
 class TestLoadClipEdits:
     def test_missing_path_returns_none(self):
         assert vp._load_clip_edits(None, ['a.mp4']) is None

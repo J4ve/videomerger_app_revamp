@@ -104,6 +104,22 @@ export interface ILoudnessNormalization {
 }
 
 /**
+ * Automatic silence-trim options. When enabled, a `silencedetect` probe
+ * runs against each clip before merging and the detected leading +
+ * trailing silence durations are appended to the per-clip trimStart /
+ * trimEnd values. Mid-clip silence is intentionally left alone to avoid
+ * cutting natural speech pauses.
+ */
+export interface IAutoSilenceTrim {
+  /** Master switch. Defaults to false (no silence trimming). */
+  enabled: boolean;
+  /** dB level below which audio is treated as silence. Default -50. */
+  thresholdDb?: number;
+  /** Minimum silence run length in seconds to count. Default 0.5. */
+  minDurationSec?: number;
+}
+
+/**
  * Video merge options
  */
 export interface IVideoMergeOptions {
@@ -119,6 +135,8 @@ export interface IVideoMergeOptions {
   clipEdits?: IClipEdit[];
   /** Global audio loudness normalization applied to all clips. */
   loudnorm?: ILoudnessNormalization;
+  /** Auto-detect + remove leading/trailing silence from each clip. */
+  autoSilenceTrim?: IAutoSilenceTrim;
 }
 
 /**

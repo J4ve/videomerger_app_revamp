@@ -112,6 +112,22 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
         }
       }
 
+      if (options.autoSilenceTrim?.enabled) {
+        args.push('--auto-silence-trim');
+        if (typeof options.autoSilenceTrim.thresholdDb === 'number') {
+          args.push(
+            '--silence-threshold-db',
+            String(options.autoSilenceTrim.thresholdDb),
+          );
+        }
+        if (typeof options.autoSilenceTrim.minDurationSec === 'number') {
+          args.push(
+            '--silence-min-duration',
+            String(options.autoSilenceTrim.minDurationSec),
+          );
+        }
+      }
+
       const result = await this.executePythonScript(args, onProgress, onProgress);
 
       if (result.exitCode === 0) {

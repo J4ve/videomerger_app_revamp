@@ -483,6 +483,37 @@ Interface: `ILoudnessNormalization` on `IVideoMergeOptions.loudnorm`.
 CLI: `--loudnorm` (master) + `--loudnorm-target` / `--loudnorm-true-peak`
 / `--loudnorm-lra` overrides.
 
+### Auto-Trim Silence (Phase 3, advanced settings)
+
+A second advanced toggle, **Auto-trim leading & trailing silence from
+each clip**, runs an `ffmpeg -af silencedetect` pre-pass on every input
+before the main merge. The detected leading + trailing silence duration
+is added on top of any manual `trimStart` / `trimEnd` from the Phase 1
+edit panel, so manual trims compose with detected ones.
+
+Mid-clip silence is intentionally left alone. Cutting silence inside the
+clip would require synchronized `select` / `aselect` filter expressions
+for both video and audio and risk slicing natural speech pauses. Edge
+trim re-uses the Phase 1 trim plumbing, keeps audio and video in sync,
+and matches the panelist intent ("remove silent parts to improve
+pacing") in the common case.
+
+UI exposes one threshold preset:
+
+| Preset | Behavior |
+|--------|----------|
+| -40 dB | Aggressive — also trims room tone and quiet breathing |
+| -50 dB | Default — trims clearly silent regions only |
+| -60 dB | Gentle — trims only true digital silence |
+
+Interface: `IAutoSilenceTrim` on `IVideoMergeOptions.autoSilenceTrim`.
+CLI: `--auto-silence-trim` (master) + `--silence-threshold-db`
+/ `--silence-min-duration` overrides.
+
+Probe cost: ~1.5 seconds per clip on a fast disk (real-world measurement
+on a 42 s MP4 with `ffmpeg -af silencedetect -f null -`). Linear in clip
+count, additive to total merge time but not multiplicative.
+
 ### 3-Step Wizard
 
 | Step | Name | Description |

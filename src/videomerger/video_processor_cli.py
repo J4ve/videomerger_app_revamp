@@ -11,6 +11,7 @@ with robust merging and real-time progress
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -211,6 +212,151 @@ def _parse_time_from_progress(line):
         except ValueError:
             pass
     return None
+
+
+# ---------- Silence detection helpers (Phase 3) ----------
+
+# silencedetect prints lines like:
+#   [silencedetect @ 0x...] silence_start: 0
+#   [silencedetect @ 0x...] silence_end: 2.345 | silence_duration: 2.345
+_SILENCE_START_RE = re.compile(r'silence_start:\s*([-\d.]+)')
+_SILENCE_END_RE = re.compile(
+    r'silence_end:\s*([-\d.]+)\s*\|\s*silence_duration:\s*([-\d.]+)'
+)
+
+
+def _parse_silence_events(stderr_text):
+    """Parse silencedetect events from ffmpeg stderr.
+
+    Returns a list of (start, end) tuples sorted by start time. ``end``
+    may be ``None`` when the silence extends past the end of the
+    stream (i.e. trailing silence with no closing end event).
+    """
+    events = []
+    pending_start = None
+    for line in stderr_text.splitlines():
+        ms = _SILENCE_START_RE.search(line)
+        if ms:
+            pending_start = float(ms.group(1))
+            continue
+        me = _SILENCE_END_RE.search(line)
+        if me and pending_start is not None:
+            events.append((pending_start, float(me.group(1))))
+            pending_start = None
+    # Unclosed trailing silence — duration up to end of clip
+    if pending_start is not None:
+        events.append((pending_start, None))
+    return events
+
+
+def detect_silence_boundaries(
+    video_path,
+    threshold_db=-50.0,
+    min_duration=0.5,
+    duration_hint=None,
+):
+    """Detect leading + trailing silence durations for a single clip.
+
+    Runs a fast probing pass with the ``silencedetect`` audio filter
+    and parses its stderr log. Returns ``(leading, trailing)`` in
+    seconds. Both values default to ``0.0`` if no silence is detected,
+    if the clip has no audio, or if ffmpeg fails to run.
+
+    Only edges are reported. Mid-clip silence is intentionally
+    ignored so callers can apply the result directly to the
+    Phase 1 trimStart / trimEnd mechanism, keeping audio + video
+    in sync without complex filter expressions.
+    """
+    if not _has_audio(video_path):
+        return 0.0, 0.0
+
+    if duration_hint is None:
+        duration_hint = _get_duration(video_path) or 0.0
+
+    cmd = [
+        'ffmpeg',
+        '-hide_banner',
+        '-nostdin',
+        '-i', video_path,
+        '-af', f'silencedetect=noise={threshold_db}dB:d={min_duration}',
+        '-f', 'null',
+        '-',
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError as exc:
+        print(
+            f'WARNING: silencedetect failed for {video_path}: {exc}',
+            file=sys.stderr,
+        )
+        return 0.0, 0.0
+
+    events = _parse_silence_events(result.stderr or '')
+    if not events:
+        return 0.0, 0.0
+
+    leading = 0.0
+    first_start, first_end = events[0]
+    if first_start <= 0.05 and first_end is not None:
+        leading = max(0.0, first_end)
+
+    trailing = 0.0
+    last_start, last_end = events[-1]
+    if duration_hint > 0:
+        if last_end is None:
+            trailing = max(0.0, duration_hint - last_start)
+        elif duration_hint - last_end <= 0.05:
+            trailing = max(0.0, duration_hint - last_start)
+
+    return leading, trailing
+
+
+def _augment_edits_with_silence_trim(
+    input_paths,
+    clip_edits,
+    raw_durations,
+    threshold_db,
+    min_duration,
+):
+    """Run silencedetect on each clip and add detected silence to trims.
+
+    Mutates ``clip_edits`` in place so the existing trimStart / trimEnd
+    pipeline picks up the auto-detected values. Existing manual trim
+    values from the user are preserved and the detected silence is
+    added on top — never replaced.
+    """
+    print('INFO: Detecting silence boundaries for auto-trim...')
+    for index, path in enumerate(input_paths):
+        leading, trailing = detect_silence_boundaries(
+            path,
+            threshold_db=threshold_db,
+            min_duration=min_duration,
+            duration_hint=raw_durations[index],
+        )
+        if leading <= 0 and trailing <= 0:
+            continue
+        edit = clip_edits[index]
+        try:
+            existing_start = float(edit.get('trimStart', 0) or 0)
+        except (TypeError, ValueError):
+            existing_start = 0.0
+        try:
+            existing_end = float(edit.get('trimEnd', 0) or 0)
+        except (TypeError, ValueError):
+            existing_end = 0.0
+        edit['trimStart'] = existing_start + leading
+        edit['trimEnd'] = existing_end + trailing
+        print(
+            f'INFO:   {os.path.basename(path)} '
+            f'-> +{leading:.2f}s leading, +{trailing:.2f}s trailing'
+        )
 
 
 # ---------- Per-clip edit helpers (Phase 1) ----------
@@ -424,6 +570,9 @@ def merge_videos(
     disable_hwaccel=True,
     clip_edits=None,
     loudnorm=None,
+    auto_silence_trim=False,
+    silence_threshold_db=-50.0,
+    silence_min_duration=0.5,
 ):
     """Normalize clips and concatenate them into a single output video."""
     if len(input_paths) < 2:
@@ -459,6 +608,16 @@ def merge_videos(
     raw_durations = [_get_duration(path) for path in input_paths]
     if clip_edits is None:
         clip_edits = [{} for _ in input_paths]
+
+    if auto_silence_trim:
+        _augment_edits_with_silence_trim(
+            input_paths,
+            clip_edits,
+            raw_durations,
+            threshold_db=silence_threshold_db,
+            min_duration=silence_min_duration,
+        )
+
     durations = [
         _clip_effective_duration(raw_durations[i], clip_edits[i])
         for i in range(len(input_paths))
@@ -698,6 +857,27 @@ def main():
         default=11.0,
         help='Target loudness range in LU (default 11)',
     )
+    parser.add_argument(
+        '--auto-silence-trim',
+        action='store_true',
+        help=(
+            'Auto-detect leading and trailing silence in each clip via '
+            'silencedetect and add the detected duration to trimStart / '
+            'trimEnd before merging'
+        ),
+    )
+    parser.add_argument(
+        '--silence-threshold-db',
+        type=float,
+        default=-50.0,
+        help='Silence threshold in dB for silencedetect (default -50)',
+    )
+    parser.add_argument(
+        '--silence-min-duration',
+        type=float,
+        default=0.5,
+        help='Minimum silence duration in seconds (default 0.5)',
+    )
 
     args = parser.parse_args()
 
@@ -742,6 +922,9 @@ def main():
             disable_hwaccel=not args.allow_hwaccel,
             clip_edits=clip_edits,
             loudnorm=loudnorm,
+            auto_silence_trim=args.auto_silence_trim,
+            silence_threshold_db=args.silence_threshold_db,
+            silence_min_duration=args.silence_min_duration,
         )
         sys.exit(0 if success else 1)
 
