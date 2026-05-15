@@ -102,10 +102,12 @@ function streamFileResponse(
 }
 
 function registerLocalVideoProtocol(): void {
-  // Stream local video files in fixed-size chunks (default 1 MiB per request).
-  // HTML5 <video> issues Range requests for seeking, so 206 responses are the
-  // common path; the 200 fallback streams from disk for non-range requests.
-  const CHUNK_SIZE = 1024 * 1024;
+  // Stream local video files in 16 MiB chunks per range request. This is
+  // large enough for Chromium's MP4 demuxer to find moov/ftyp/mdat boxes
+  // during initial probe (even moov-at-end files like NVIDIA ShadowPlay
+  // recordings still get parsed via the end-range request that follows),
+  // and small enough to avoid pinning gigabytes of disk read in memory.
+  const CHUNK_SIZE = 16 * 1024 * 1024;
 
   protocol.handle('local-video', async (request) => {
     try {
@@ -129,29 +131,30 @@ function registerLocalVideoProtocol(): void {
       const total = stat.size;
       const rangeHeader = request.headers.get('range');
 
-      if (rangeHeader) {
-        const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-        if (!match) {
-          return new Response('Malformed Range header', { status: 416 });
-        }
-        const start = parseInt(match[1], 10);
-        const requestedEnd = match[2] ? parseInt(match[2], 10) : total - 1;
-        const cappedEnd = Math.min(
-          requestedEnd,
-          start + CHUNK_SIZE - 1,
-          total - 1,
-        );
-        if (Number.isNaN(start) || start >= total || cappedEnd < start) {
-          return new Response('Range not satisfiable', {
-            status: 416,
-            headers: { 'Content-Range': `bytes */${total}` },
-          });
-        }
-        return streamFileResponse(filePath, total, start, cappedEnd, true);
+      // Treat no-Range as an implicit `bytes=0-` so a request for a 3 GB
+      // file never streams the whole body during Chromium's initial probe;
+      // the demuxer always uses Range requests for subsequent reads anyway.
+      const effectiveRange = rangeHeader || 'bytes=0-';
+      const match = /bytes=(\d+)-(\d*)/.exec(effectiveRange);
+      if (!match) {
+        return new Response('Malformed Range header', { status: 416 });
       }
-
-      return streamFileResponse(filePath, total, 0, total - 1, false);
-    } catch {
+      const start = parseInt(match[1], 10);
+      const requestedEnd = match[2] ? parseInt(match[2], 10) : total - 1;
+      const cappedEnd = Math.min(
+        requestedEnd,
+        start + CHUNK_SIZE - 1,
+        total - 1,
+      );
+      if (Number.isNaN(start) || start >= total || cappedEnd < start) {
+        return new Response('Range not satisfiable', {
+          status: 416,
+          headers: { 'Content-Range': `bytes */${total}` },
+        });
+      }
+      return streamFileResponse(filePath, total, start, cappedEnd, true);
+    } catch (err) {
+      console.error('[local-video] handler error', err);
       return new Response('Invalid local video request', { status: 400 });
     }
   });
