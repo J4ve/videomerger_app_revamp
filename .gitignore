@@ -229,3 +229,6 @@ resources/video_processor_cli.py
 # Keep icon files tracked (small enough for Git)
 !resources/icon.ico
 !resources/icon.png
+
+# Build artifacts from scripts/audit_to_pdf.py — regenerated on demand
+docs/AUDIT.pdf

@@ -22,7 +22,7 @@ The major engineering improvements between SE1 and SE2:
 | **Reliability** | Single Python script, no tests, no error surfacing | DI-driven services, 65 pytest + 65 vitest cases, MediaError code surfaced in console, FFmpeg detection bypasses Python failure modes |
 | **Scalability** | Per-process Flask, no per-clip controls | Per-clip filter graph (trim, crop, aspect, volume, color), batchable from CLI, benchmark harness for capacity planning |
 | **Performance** | One-pass merge, opaque progress | Two-pass merge with frame-accurate trim, streaming local-video protocol (no buffer-alloc failure on multi-GB files), 256 KiB initial probe so 3 GB previews open in seconds |
-| **Automation** | Manual upload → manual merge → manual download | EBU R128 loudness normalize, auto silence trim, faster-whisper auto-captions, per-clip edits keyed by file path |
+| **Automation** | Manual upload → manual merge → manual download | EBU R128 loudness normalize, auto silence trim, faster-whisper auto-captions, per-clip edits keyed by file path, **one-click "Enable all auto-features"** that flips all three smart-assist toggles |
 | **Security** | OAuth tokens in plain JSON | `safeStorage`-encrypted tokens (DPAPI / Keychain / libsecret), legacy-blob auto-migration, `local-video` extension allowlist |
 | **DevOps** | No CI for desktop | GitHub Actions matrix: Python tests, Docker build, vitest, electron-builder Windows installer with artifact upload |
 

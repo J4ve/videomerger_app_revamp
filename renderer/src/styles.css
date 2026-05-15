@@ -1689,6 +1689,58 @@ body {
   text-decoration: underline;
 }
 
+/* ---------- One-click Auto-Enhance ---------- */
+.auto-enhance-tagline {
+  margin: -4px 0 12px;
+  color: var(--olive-300);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.auto-enhance-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.auto-enhance-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.auto-enhance-btn .vm-icon {
+  font-size: 1.15rem;
+}
+
+.auto-enhance-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auto-enhance-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: var(--olive-800);
+  color: var(--olive-300);
+  font-size: 0.8rem;
+  border: 1px solid var(--olive-700);
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+
+.auto-enhance-chip-on {
+  background: rgba(var(--accent-rgb), 0.18);
+  color: var(--bg-text);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  font-weight: 500;
+}
+
 /* ---------- Loudnorm toggle (Phase 2) ---------- */
 .loudnorm-toggle {
   display: flex;
