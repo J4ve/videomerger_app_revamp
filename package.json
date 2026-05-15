@@ -4,9 +4,11 @@
   "description": "Desktop application for merging multiple videos using Electron + React + Python",
   "main": "dist/main/main.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",
+    "dev": "concurrently -k -n vite,tsc,electron -c blue,yellow,green \"npm:dev:renderer\" \"npm:dev:main:watch\" \"npm:dev:main:run\"",
     "dev:renderer": "vite",
     "dev:main": "tsc -p tsconfig.main.json && cross-env NODE_ENV=development electron .",
+    "dev:main:watch": "tsc -p tsconfig.main.json -w",
+    "dev:main:run": "wait-on dist/main/main.js http://localhost:3000 && cross-env NODE_ENV=development electronmon .",
     "build": "npm run build:renderer && npm run build:main",
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
@@ -72,13 +74,15 @@
     "cross-env": "^7.0.3",
     "electron": "^28.1.0",
     "electron-builder": "^24.9.1",
+    "electronmon": "^2.0.4",
     "eslint": "^8.56.0",
     "eslint-plugin-react": "^7.33.2",
     "jsdom": "^28.1.0",
     "prettier": "^3.1.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.10",
-    "vitest": "^1.1.0"
+    "vitest": "^1.1.0",
+    "wait-on": "^9.0.10"
   },
   "dependencies": {
     "electron-store": "^8.1.0",
