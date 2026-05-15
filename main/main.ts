@@ -1,10 +1,9 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import * as http from 'http';
 import * as url from 'url';
-import { Readable } from 'stream';
 import { execFile, execSync } from 'child_process';
 import Store from 'electron-store';
 import { container } from '../core/container';
@@ -48,66 +47,20 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-const VIDEO_MIME_BY_EXT: Record<string, string> = {
-  mp4: 'video/mp4',
-  m4v: 'video/mp4',
-  mov: 'video/quicktime',
-  webm: 'video/webm',
-  mkv: 'video/x-matroska',
-  avi: 'video/x-msvideo',
-  mpg: 'video/mpeg',
-  mpeg: 'video/mpeg',
-  ts: 'video/mp2t',
-  m2ts: 'video/mp2t',
-  ogv: 'video/ogg',
-  '3gp': 'video/3gpp',
-  flv: 'video/x-flv',
-  wmv: 'video/x-ms-wmv',
-  vob: 'video/dvd',
-  mxf: 'application/mxf',
-};
-
-function mimeForFile(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
-  return VIDEO_MIME_BY_EXT[ext] || 'application/octet-stream';
-}
-
-function streamFileResponse(
-  filePath: string,
-  totalSize: number,
-  start: number,
-  end: number,
-  partial: boolean,
-): Response {
-  // createReadStream streams from disk; converting to a web ReadableStream
-  // lets Electron's protocol.handle pipe bytes to the renderer without
-  // ever allocating a Buffer the size of the whole video (which was the
-  // cause of "RangeError: Array buffer allocation failed" on large files).
-  const nodeStream = fs.createReadStream(filePath, { start, end });
-  const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
-
-  const headers: Record<string, string> = {
-    'Accept-Ranges': 'bytes',
-    'Content-Type': mimeForFile(filePath),
-    'Content-Length': String(end - start + 1),
-  };
-  if (partial) {
-    headers['Content-Range'] = `bytes ${start}-${end}/${totalSize}`;
-  }
-
-  return new Response(webStream, {
-    status: partial ? 206 : 200,
-    headers,
-  });
-}
-
 function registerLocalVideoProtocol(): void {
-  // Stream local video files in 16 MiB chunks per range request. This is
-  // large enough for Chromium's MP4 demuxer to find moov/ftyp/mdat boxes
-  // during initial probe (even moov-at-end files like NVIDIA ShadowPlay
-  // recordings still get parsed via the end-range request that follows),
-  // and small enough to avoid pinning gigabytes of disk read in memory.
-  const CHUNK_SIZE = 16 * 1024 * 1024;
+  // Delegate file reads to Electron's net.fetch on the underlying file://
+  // URL. Manual ReadableStream construction with createReadStream + toWeb
+  // produced bytes that Chromium's MP4 demuxer rejected with
+  // DEMUXER_ERROR_COULD_NOT_OPEN even on vanilla H.264 + AAC content.
+  // net.fetch handles range-aware streaming natively without the demuxer
+  // confusion.
+  //
+  // The original bug (RangeError: Array buffer allocation failed) came
+  // from passing a no-Range request through to net.fetch, which buffers
+  // the full body. To avoid that we synthesize an initial range header
+  // when Chromium does not provide one, so we never load a multi-GB file
+  // into a single buffer.
+  const INITIAL_CHUNK = 16 * 1024 * 1024;
 
   protocol.handle('local-video', async (request) => {
     try {
@@ -128,31 +81,20 @@ function registerLocalVideoProtocol(): void {
         return new Response('Not a file', { status: 400 });
       }
 
-      const total = stat.size;
+      const fileUrl = url.pathToFileURL(filePath).toString();
       const rangeHeader = request.headers.get('range');
 
-      // Treat no-Range as an implicit `bytes=0-` so a request for a 3 GB
-      // file never streams the whole body during Chromium's initial probe;
-      // the demuxer always uses Range requests for subsequent reads anyway.
-      const effectiveRange = rangeHeader || 'bytes=0-';
-      const match = /bytes=(\d+)-(\d*)/.exec(effectiveRange);
-      if (!match) {
-        return new Response('Malformed Range header', { status: 416 });
+      if (rangeHeader) {
+        return net.fetch(fileUrl, { headers: { range: rangeHeader } });
       }
-      const start = parseInt(match[1], 10);
-      const requestedEnd = match[2] ? parseInt(match[2], 10) : total - 1;
-      const cappedEnd = Math.min(
-        requestedEnd,
-        start + CHUNK_SIZE - 1,
-        total - 1,
-      );
-      if (Number.isNaN(start) || start >= total || cappedEnd < start) {
-        return new Response('Range not satisfiable', {
-          status: 416,
-          headers: { 'Content-Range': `bytes */${total}` },
-        });
-      }
-      return streamFileResponse(filePath, total, start, cappedEnd, true);
+
+      // Synthesize a bounded initial range so net.fetch never buffers the
+      // whole file. Chromium's HTML5 <video> will issue follow-up range
+      // requests as it needs more data, which we forward verbatim above.
+      const initialEnd = Math.min(INITIAL_CHUNK - 1, stat.size - 1);
+      return net.fetch(fileUrl, {
+        headers: { range: `bytes=0-${initialEnd}` },
+      });
     } catch (err) {
       console.error('[local-video] handler error', err);
       return new Response('Invalid local video request', { status: 400 });
