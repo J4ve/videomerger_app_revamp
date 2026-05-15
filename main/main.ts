@@ -221,6 +221,45 @@ function getFFprobeSystemPath(): string | null {
   }
 }
 
+/**
+ * Probe an FFmpeg binary at the given path by running `ffmpeg -version`.
+ * Returns the first line of stdout on success, null on failure. This
+ * bypasses the Python child process entirely so an unhealthy Python
+ * install does not make the FFmpeg indicator falsely report missing.
+ */
+function probeFFmpegBinary(binaryPath: string): string | null {
+  try {
+    const result = execSync(`"${binaryPath}" -version`, {
+      encoding: 'utf-8',
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return result.split('\n')[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the first working FFmpeg binary across bundled / static /
+ * system PATH. Returns the path + first-line version string, or null
+ * when none of the candidates are runnable.
+ */
+function resolveWorkingFFmpeg(): { path: string; version: string } | null {
+  const candidates: (string | null)[] = [
+    getBundledFFmpegPath(),
+    getFFmpegSystemPath(),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const version = probeFFmpegBinary(candidate);
+    if (version) {
+      return { path: candidate, version };
+    }
+  }
+  return null;
+}
+
 function getBundledFFprobePath(): string | null {
   const ext = process.platform === 'win32' ? '.exe' : '';
   const possiblePaths = [
@@ -332,9 +371,40 @@ function getVideoStreamInfo(filePath: string): Promise<{
  * Application configuration
  * Injected into services for framework-agnostic design
  */
+/**
+ * Find a working Python interpreter. On Windows the default `python`
+ * command often resolves to the Microsoft Store shim, which silently
+ * fails when invoked from a child process. This probes common
+ * alternatives (`py`, `python3`, then `python`) and returns the first
+ * that prints a Python 3.x version string. The launcher `py` on
+ * Windows defaults to the highest-version installed Python 3, so the
+ * extra `-3` flag is not required.
+ */
+function findPython(): string {
+  const candidates = ['py', 'python3', 'python'];
+  for (const cmd of candidates) {
+    try {
+      const out = execSync(`${cmd} --version`, {
+        encoding: 'utf-8',
+        timeout: 3000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      if (/Python\s+3\./.test(out)) {
+        console.log(`[DEBUG] Python interpreter resolved: ${cmd} (${out.trim()})`);
+        return cmd;
+      }
+    } catch {
+      continue;
+    }
+  }
+  console.warn('[DEBUG] No working Python 3 interpreter found; falling back to "python"');
+  return 'python';
+}
+
 function getAppConfig(): IAppConfig {
   const bundledPath = getBundledFFmpegPath();
-  
+  const pythonPath = findPython();
+
   // Resolve Python script path
   let pythonScriptPath = path.join(__dirname, '../../src/videomerger/video_processor_cli.py');
   
@@ -356,7 +426,7 @@ function getAppConfig(): IAppConfig {
   console.log('[DEBUG] Resources Path:', process.resourcesPath);
 
   return {
-    pythonPath: 'python',
+    pythonPath,
     pythonScriptPath,
     supportedFormats: [
       'mp4', 'mov', 'avi', 'mkv', 'webm',
@@ -806,24 +876,25 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('check-ffmpeg', async () => {
-    const adapter = container.resolve<PythonFFmpegAdapter>('FFmpegAdapter');
-    const available = await adapter.isAvailable();
-    const version = available ? await adapter.getVersion() : 'not found';
-    return { available, version };
+    // Probe FFmpeg binary directly so a broken Python install (e.g. the
+    // Microsoft Store python.exe shim) cannot make the indicator falsely
+    // report FFmpeg as missing. Python is only needed for merging.
+    const probe = resolveWorkingFFmpeg();
+    return {
+      available: !!probe,
+      version: probe?.version || 'not found',
+    };
   });
 
   // Enhanced FFmpeg details for the indicator dialog
   ipcMain.handle('check-ffmpeg-details', async () => {
-    const adapter = container.resolve<PythonFFmpegAdapter>('FFmpegAdapter');
-    const available = await adapter.isAvailable();
-    const version = available ? await adapter.getVersion() : 'not found';
+    const probe = resolveWorkingFFmpeg();
     const bundledPath = getBundledFFmpegPath();
-    const systemPath = getFFmpegSystemPath();
     return {
-      available,
-      version,
-      path: bundledPath || systemPath || 'Not found',
-      isBundled: !!bundledPath,
+      available: !!probe,
+      version: probe?.version || 'not found',
+      path: probe?.path || 'Not found',
+      isBundled: !!bundledPath && probe?.path === bundledPath,
     };
   });
 
