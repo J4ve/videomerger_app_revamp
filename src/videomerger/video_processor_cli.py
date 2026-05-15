@@ -213,6 +213,178 @@ def _parse_time_from_progress(line):
     return None
 
 
+# ---------- Per-clip edit helpers (Phase 1) ----------
+
+ASPECT_PRESETS = {
+    '16:9': (16, 9),
+    '9:16': (9, 16),
+    '1:1': (1, 1),
+    '4:5': (4, 5),
+    '4:3': (4, 3),
+}
+
+
+def _load_clip_edits(clips_json_path, input_paths):
+    """Load per-clip edits keyed to input_paths order.
+
+    Returns a list of dicts (one per input) with normalized fields, or
+    None if the JSON file is missing/empty/malformed (caller falls back
+    to default behavior).
+    """
+    if not clips_json_path or not os.path.exists(clips_json_path):
+        return None
+    try:
+        with open(clips_json_path, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f'WARNING: Could not read clips JSON ({exc}); '
+            f'falling back to defaults',
+            file=sys.stderr,
+        )
+        return None
+
+    clips = data.get('clips') if isinstance(data, dict) else None
+    if not isinstance(clips, list) or len(clips) != len(input_paths):
+        return None
+
+    edits = []
+    for entry in clips:
+        edit = entry.get('edits') if isinstance(entry, dict) else {}
+        edits.append(edit if isinstance(edit, dict) else {})
+    return edits
+
+
+def _clip_effective_duration(raw_duration, edit):
+    """Return clip duration after trimStart/trimEnd applied."""
+    start = max(float(edit.get('trimStart', 0) or 0), 0.0)
+    end_trim = max(float(edit.get('trimEnd', 0) or 0), 0.0)
+    effective = max(raw_duration - start - end_trim, 0.0)
+    return effective
+
+
+def _aspect_target_dims(edit, default_w, default_h):
+    """Pick target dims based on aspectRatio preset for a clip.
+
+    Returns (w, h) divisible by 2. Falls back to baseline dims when
+    preset is 'original' or unknown.
+    """
+    preset = (edit or {}).get('aspectRatio') or 'original'
+    if preset == 'original':
+        return default_w, default_h
+    if preset == 'custom':
+        try:
+            cw = int(edit.get('aspectWidth') or 0)
+            ch = int(edit.get('aspectHeight') or 0)
+        except (TypeError, ValueError):
+            cw = ch = 0
+        if cw > 0 and ch > 0:
+            ratio_w, ratio_h = cw, ch
+        else:
+            return default_w, default_h
+    elif preset in ASPECT_PRESETS:
+        ratio_w, ratio_h = ASPECT_PRESETS[preset]
+    else:
+        return default_w, default_h
+
+    # Fit to baseline area while honoring aspect ratio
+    base_area = default_w * default_h
+    h = int((base_area * ratio_h / ratio_w) ** 0.5)
+    w = int(h * ratio_w / ratio_h)
+    w -= w % 2
+    h -= h % 2
+    return max(w, 2), max(h, 2)
+
+
+def _build_clip_video_chain(edit, target_w, target_h, target_fps):
+    """Build the video filter chain string for one clip.
+
+    Order: trim -> crop -> scale+pad(aspect target) -> fps -> eq -> format.
+    """
+    filters = []
+
+    # Trim is applied at input level via -ss / -t (faster + frame-accurate
+    # with re-encode). Filter only needs to rebase PTS so concat timestamps
+    # start at 0 for each clip segment.
+    start = max(float(edit.get('trimStart', 0) or 0), 0.0)
+    end_trim = max(float(edit.get('trimEnd', 0) or 0), 0.0)
+    if start > 0 or end_trim > 0:
+        filters.append('setpts=PTS-STARTPTS')
+
+    crop = edit.get('crop') or {}
+    try:
+        cw = int(crop.get('width') or 0)
+        ch = int(crop.get('height') or 0)
+        cx = int(crop.get('x') or 0)
+        cy = int(crop.get('y') or 0)
+    except (TypeError, ValueError):
+        cw = ch = cx = cy = 0
+    if cw > 0 and ch > 0:
+        filters.append(f'crop={cw}:{ch}:{cx}:{cy}')
+
+    aspect_w, aspect_h = _aspect_target_dims(edit, target_w, target_h)
+    filters.append(
+        f'scale={aspect_w}:{aspect_h}:'
+        'force_original_aspect_ratio=decrease'
+    )
+    filters.append(
+        f'pad={aspect_w}:{aspect_h}:(ow-iw)/2:(oh-ih)/2'
+    )
+
+    filters.append(f'fps={target_fps}')
+
+    try:
+        brightness = float(edit.get('brightness') or 0)
+    except (TypeError, ValueError):
+        brightness = 0.0
+    try:
+        contrast = float(edit.get('contrast', 1.0) or 1.0)
+    except (TypeError, ValueError):
+        contrast = 1.0
+    try:
+        saturation = float(edit.get('saturation', 1.0) or 1.0)
+    except (TypeError, ValueError):
+        saturation = 1.0
+    if brightness != 0.0 or contrast != 1.0 or saturation != 1.0:
+        # Clamp to ffmpeg-supported ranges
+        brightness = max(-1.0, min(1.0, brightness))
+        contrast = max(0.0, min(2.0, contrast))
+        saturation = max(0.0, min(3.0, saturation))
+        filters.append(
+            f'eq=brightness={brightness:.3f}:'
+            f'contrast={contrast:.3f}:'
+            f'saturation={saturation:.3f}'
+        )
+
+    filters.append('format=yuv420p')
+    return ','.join(filters)
+
+
+def _build_clip_audio_chain(edit, target_audio_rate):
+    """Build the audio filter chain string for one clip."""
+    filters = []
+
+    # Trim handled by input-level -ss/-t. Filter only rebases PTS.
+    start = max(float(edit.get('trimStart', 0) or 0), 0.0)
+    end_trim = max(float(edit.get('trimEnd', 0) or 0), 0.0)
+    if start > 0 or end_trim > 0:
+        filters.append('asetpts=PTS-STARTPTS')
+
+    filters.append(
+        f'aformat=sample_rates={target_audio_rate}:channel_layouts=stereo'
+    )
+
+    try:
+        volume = float(edit.get('volume', 1.0) or 1.0)
+    except (TypeError, ValueError):
+        volume = 1.0
+    if abs(volume - 1.0) > 1e-6:
+        volume = max(0.0, min(volume, 8.0))
+        filters.append(f'volume={volume:.3f}')
+
+    return ','.join(filters)
+
+
 def merge_videos(
     input_paths,
     output_path,
@@ -220,6 +392,7 @@ def merge_videos(
     codec='H.264',
     overwrite=False,
     disable_hwaccel=True,
+    clip_edits=None,
 ):
     """Normalize clips and concatenate them into a single output video."""
     if len(input_paths) < 2:
@@ -252,7 +425,13 @@ def merge_videos(
     )
 
     # Maintain smooth 0-100 progress tracking across all clips.
-    durations = [_get_duration(path) for path in input_paths]
+    raw_durations = [_get_duration(path) for path in input_paths]
+    if clip_edits is None:
+        clip_edits = [{} for _ in input_paths]
+    durations = [
+        _clip_effective_duration(raw_durations[i], clip_edits[i])
+        for i in range(len(input_paths))
+    ]
     total_duration = sum(durations)
     accumulated_duration = 0.0
 
@@ -281,27 +460,39 @@ def merge_videos(
             temp_filepath = os.path.join(temp_dir, temp_filename)
             normalized_files.append(temp_filename)
 
-            filter_v = (
-                f'scale={target_width}:{target_height}:'
-                'force_original_aspect_ratio=decrease,'
-                f'pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2,'
-                f'fps={target_fps},format=yuv420p'
+            edit = clip_edits[index] if index < len(clip_edits) else {}
+            filter_v = _build_clip_video_chain(
+                edit, target_width, target_height, target_fps
             )
+            filter_a_chain = _build_clip_audio_chain(edit, target_audio_rate)
 
             cmd = ['ffmpeg', '-y', '-hide_banner', '-nostdin']
             if disable_hwaccel:
                 cmd.extend(['-hwaccel', 'none'])
 
+            # Input-level trim: -ss seeks before -i (fast), -t caps duration.
+            # Combined with setpts/asetpts in filter chain to rebase PTS.
+            try:
+                trim_start = max(float(edit.get('trimStart', 0) or 0), 0.0)
+            except (TypeError, ValueError):
+                trim_start = 0.0
+            if trim_start > 0:
+                cmd.extend(['-ss', f'{trim_start:.3f}'])
+
             cmd.extend(['-i', path])
+
+            effective = durations[index]
+            if effective > 0 and effective < raw_durations[index]:
+                cmd.extend(['-t', f'{effective:.3f}'])
 
             has_audio = _has_audio(path)
             if has_audio:
-                filter_a = (
-                    'aformat=sample_rates='
-                    f'{target_audio_rate}:channel_layouts=stereo'
+                filter_str = (
+                    f'[0:v]{filter_v}[outv]; [0:a]{filter_a_chain}[outa]'
                 )
-                filter_str = f'[0:v]{filter_v}[outv]; [0:a]{filter_a}[outa]'
             else:
+                # Synthesize silent stereo track at target rate; volume in
+                # filter_a_chain still applies (no-op when source missing).
                 filter_str = (
                     f'[0:v]{filter_v}[outv]; '
                     f'anullsrc=r={target_audio_rate}:cl=stereo[outa]'
@@ -443,6 +634,14 @@ def main():
             '(less stable on some systems)'
         ),
     )
+    parser.add_argument(
+        '--clips-json',
+        help=(
+            'Path to a JSON file describing per-clip edits '
+            '(trim, crop, aspect, volume, color). Schema: '
+            '{"clips": [{"path": "...", "edits": {...}}, ...]}'
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -467,6 +666,7 @@ def main():
             )
             sys.exit(1)
 
+        clip_edits = _load_clip_edits(args.clips_json, args.inputs)
         success = merge_videos(
             args.inputs,
             args.output,
@@ -474,6 +674,7 @@ def main():
             args.codec,
             args.overwrite,
             disable_hwaccel=not args.allow_hwaccel,
+            clip_edits=clip_edits,
         )
         sys.exit(0 if success else 1)
 

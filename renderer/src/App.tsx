@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import ClipEditPanel, { IClipEdit } from './components/ClipEditPanel';
 
 declare global {
   interface Window {
@@ -324,6 +325,9 @@ const App: React.FC = () => {
   const [allowDuplicate, setAllowDuplicate] = useState<boolean>(true);
   const [fileLocks, setFileLocks] = useState<boolean[]>([]);
   const [arrangeVideoMeta, setArrangeVideoMeta] = useState<Record<string, ArrangeVideoMeta>>({});
+  // Phase 1: per-clip edits keyed by file path. Duplicate clips share edits.
+  const [clipEditsByPath, setClipEditsByPath] = useState<Record<string, IClipEdit>>({});
+  const [editingClipPath, setEditingClipPath] = useState<string | null>(null);
   const [previewVideoIndex, setPreviewVideoIndex] = useState<number>(0);
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
@@ -1107,10 +1111,18 @@ const App: React.FC = () => {
           : standardization.fps,
     };
 
+    const clipEditsPayload = selectedFiles.map(
+      (path) => clipEditsByPath[path] ?? {},
+    );
+    const hasAnyEdits = clipEditsPayload.some(
+      (edit) => Object.keys(edit).length > 0,
+    );
+
     const result = await window.electronAPI.mergeVideos({
       inputPaths: selectedFiles,
       outputPath: resolvedOutputPath,
       standardization: effectiveStandardization,
+      ...(hasAnyEdits ? { clipEdits: clipEditsPayload } : {}),
     });
 
     if (mergeCancelledRef.current) {
@@ -1685,9 +1697,14 @@ const App: React.FC = () => {
                     </aside>
 
                     <div className="sequence-list">
-                      {selectedFileNames.map((file, index) => (
+                      {selectedFileNames.map((file, index) => {
+                        const clipPath = selectedFiles[index];
+                        const isEditing = editingClipPath === clipPath;
+                        const clipEdit = clipEditsByPath[clipPath] ?? {};
+                        const hasEdits = Object.keys(clipEdit).length > 0;
+                        return (
+                        <React.Fragment key={`${file}-${index}`}>
                         <div
-                          key={`${file}-${index}`}
                           className={`sequence-item ${index === previewVideoIndex ? 'sequence-item-active' : ''}`}
                           draggable={!isArrangementLockMode || !fileLocks[index]}
                           onClick={() => handleSelectPreview(index)}
@@ -1749,6 +1766,21 @@ const App: React.FC = () => {
                               <span className="material-symbols-rounded vm-icon" aria-hidden="true">arrow_downward</span>
                             </button>
                             <button
+                              className={`mini-btn mini-btn-icon ${hasEdits ? 'mini-btn-lock-active' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingClipPath((prev) =>
+                                  prev === clipPath ? null : clipPath,
+                                );
+                              }}
+                              disabled={isMerging}
+                              title={hasEdits ? 'Edit clip (has edits)' : 'Edit clip'}
+                            >
+                              <span className="material-symbols-rounded vm-icon" aria-hidden="true">
+                                tune
+                              </span>
+                            </button>
+                            <button
                               className="file-remove"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1761,7 +1793,30 @@ const App: React.FC = () => {
                             </button>
                           </div>
                         </div>
-                      ))}
+                        {isEditing && (
+                          <ClipEditPanel
+                            durationSec={arrangeVideoMeta[clipPath]?.duration ?? 0}
+                            edit={clipEdit}
+                            disabled={isMerging}
+                            onChange={(next) =>
+                              setClipEditsByPath((prev) => ({
+                                ...prev,
+                                [clipPath]: next,
+                              }))
+                            }
+                            onReset={() =>
+                              setClipEditsByPath((prev) => {
+                                const copy = { ...prev };
+                                delete copy[clipPath];
+                                return copy;
+                              })
+                            }
+                            onClose={() => setEditingClipPath(null)}
+                          />
+                        )}
+                        </React.Fragment>
+                        );
+                      })}
                     </div>
                   </div>
                 </section>

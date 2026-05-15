@@ -37,6 +37,57 @@ export interface IVideoStandardization {
 }
 
 /**
+ * Aspect ratio presets for reformatting clips.
+ * "original" keeps source aspect, custom uses explicit width:height.
+ */
+export type AspectRatioPreset =
+  | 'original'
+  | '16:9'
+  | '9:16'
+  | '1:1'
+  | '4:5'
+  | '4:3'
+  | 'custom';
+
+/**
+ * Crop rectangle (pixels, relative to source frame).
+ * x/y are top-left coords; w/h are crop dimensions.
+ */
+export interface ICropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Per-clip edit options applied during the normalize pass.
+ * All fields optional; absent fields skip the corresponding filter.
+ */
+export interface IClipEdit {
+  /** Seconds to skip from start of clip. Defaults to 0. */
+  trimStart?: number;
+  /** Seconds to skip from end of clip. Defaults to 0. */
+  trimEnd?: number;
+  /** Audio volume multiplier. 1.0 = unchanged, 0 = mute, 2.0 = double. */
+  volume?: number;
+  /** Optional explicit crop rectangle (pre-scale). */
+  crop?: ICropRect;
+  /** Target aspect ratio preset. Drives scale+pad/crop after crop rect. */
+  aspectRatio?: AspectRatioPreset;
+  /** Custom aspect ratio width (only used if aspectRatio === 'custom'). */
+  aspectWidth?: number;
+  /** Custom aspect ratio height (only used if aspectRatio === 'custom'). */
+  aspectHeight?: number;
+  /** Brightness adjustment. Range -1.0 to 1.0. Default 0. */
+  brightness?: number;
+  /** Contrast adjustment. Range 0 to 2.0. Default 1.0. */
+  contrast?: number;
+  /** Saturation adjustment. Range 0 to 3.0. Default 1.0. */
+  saturation?: number;
+}
+
+/**
  * Video merge options
  */
 export interface IVideoMergeOptions {
@@ -45,6 +96,11 @@ export interface IVideoMergeOptions {
   quality?: 'low' | 'medium' | 'high';
   overwrite?: boolean;
   standardization?: IVideoStandardization;
+  /**
+   * Per-clip edits parallel to inputPaths. Index N applies to inputPaths[N].
+   * Length must match inputPaths.length when provided.
+   */
+  clipEdits?: IClipEdit[];
 }
 
 /**

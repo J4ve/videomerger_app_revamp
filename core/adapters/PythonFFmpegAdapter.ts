@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import {
   IFFmpegAdapter,
   IVideoMergeOptions,
@@ -70,6 +73,7 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
     options: IVideoMergeOptions,
     onProgress?: (output: string) => void
   ): Promise<IVideoProcessingResult> {
+    let clipsJsonPath: string | undefined;
     try {
       const args = [
         '--merge',
@@ -85,6 +89,11 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
 
       if (options.overwrite) {
         args.push('--overwrite');
+      }
+
+      if (options.clipEdits && options.clipEdits.length > 0) {
+        clipsJsonPath = this.writeClipsJson(options);
+        args.push('--clips-json', clipsJsonPath);
       }
 
       const result = await this.executePythonScript(args, onProgress, onProgress);
@@ -109,7 +118,31 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
         success: false,
         error: error instanceof Error ? error.message : String(error),
       };
+    } finally {
+      if (clipsJsonPath) {
+        fs.promises.unlink(clipsJsonPath).catch(() => undefined);
+      }
     }
+  }
+
+  /**
+   * Serialize per-clip edits to a temp JSON file consumed by the Python CLI.
+   * Passing via file (not argv) avoids OS arg-length limits when many clips
+   * have complex edits and keeps quoting concerns off the command line.
+   */
+  private writeClipsJson(options: IVideoMergeOptions): string {
+    const payload = {
+      clips: options.inputPaths.map((p, i) => ({
+        path: p,
+        edits: options.clipEdits?.[i] ?? {},
+      })),
+    };
+    const tmpFile = path.join(
+      os.tmpdir(),
+      `videomerger_clips_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.json`,
+    );
+    fs.writeFileSync(tmpFile, JSON.stringify(payload), 'utf-8');
+    return tmpFile;
   }
 
   /**
