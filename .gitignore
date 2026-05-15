@@ -230,5 +230,8 @@ resources/video_processor_cli.py
 !resources/icon.ico
 !resources/icon.png
 
-# Build artifacts from scripts/audit_to_pdf.py — regenerated on demand
-docs/AUDIT.pdf
+# Audit report Markdown source is kept out of version control so the
+# team can edit cover-page metadata, perf numbers, and final tweaks
+# without producing commit noise. The rendered PDF (committed) is the
+# submission artifact.
+docs/AUDIT.md
