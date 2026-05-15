@@ -360,7 +360,7 @@ ls resources/ffmpeg/
 ```
 
 If `node_modules/ffmpeg-static` is missing entirely, re-run `npm install`.
-If you prefer a system install for any reason (e.g. ARM Mac), `brew install ffmpeg` / `apt-get install ffmpeg` / `winget install ffmpeg` works as a fallback — the app probes the system PATH if both bundled and `ffmpeg-static` paths fail.
+If you prefer a system install for any reason (e.g. ARM Mac), `brew install ffmpeg` / `apt-get install ffmpeg` / `winget install ffmpeg` works as a fallback - the app probes the system PATH if both bundled and `ffmpeg-static` paths fail.
 
 ### Issue: Port Already in Use
 
@@ -439,7 +439,7 @@ inline edit panel with sliders/controls for:
 - Trim start / trim end (seconds, bounded by clip duration)
 - Aspect ratio preset (`original`, `16:9`, `9:16`, `1:1`, `4:5`, `4:3`, custom W:H)
 - Optional crop rectangle (`x`, `y`, `width`, `height` in pixels)
-- Per-clip audio volume (0–2×)
+- Per-clip audio volume (0-2×)
 - Brightness / contrast / saturation
 
 Edits are keyed by file path (duplicate clips share edit state) and serialized
@@ -460,7 +460,7 @@ across all clips (EBU R128)** toggle. When enabled, every clip in the
 normalize pass gets an `loudnorm=I=<target>:TP=<peak>:LRA=<range>`
 filter appended to its audio chain.
 
-This is the single-pass form of `loudnorm` — adequate for the project's
+This is the single-pass form of `loudnorm` - adequate for the project's
 "fast merge" workflow. Two-pass measure-then-normalize would be more
 accurate but doubles processing time per clip; we trade some LUFS
 precision for the speed contract the panel asked us to keep.
@@ -502,9 +502,9 @@ UI exposes one threshold preset:
 
 | Preset | Behavior |
 |--------|----------|
-| -40 dB | Aggressive — also trims room tone and quiet breathing |
-| -50 dB | Default — trims clearly silent regions only |
-| -60 dB | Gentle — trims only true digital silence |
+| -40 dB | Aggressive - also trims room tone and quiet breathing |
+| -50 dB | Default - trims clearly silent regions only |
+| -60 dB | Gentle - trims only true digital silence |
 
 Interface: `IAutoSilenceTrim` on `IVideoMergeOptions.autoSilenceTrim`.
 CLI: `--auto-silence-trim` (master) + `--silence-threshold-db`
@@ -577,6 +577,25 @@ Linear in total speech duration. On a CPU with `compute_type=int8`,
 `base` model transcribes roughly real-time on modern hardware
 (e.g. 5 minutes of audio in ~5 minutes). Larger models scale roughly
 quadratically in size.
+
+### Auto-Enhance Block (finalize step)
+
+The smart-assist features (loudness normalize, silence auto-trim, auto
+captions) each have a checkbox tucked inside the Advanced Settings
+details. To keep that one click away, the finalize step also exposes a
+dedicated **Auto-enhance** block right above the save-destination box:
+
+- Three pill-shaped chips, one per feature, that the user can click
+  individually to toggle on or off. The chip body shows the feature
+  name with a leading "Check" or "Empty circle" glyph reflecting state.
+- **Enable all** / **Disable all** buttons below the chips for the
+  common "I want everything" or "back to plain merge" cases.
+- The chips and the in-Advanced-Settings checkboxes are bound to the
+  same React state, so flipping one updates the other immediately.
+
+Implementation lives in `renderer/src/App.tsx` (state `loudnormEnabled`,
+`autoSilenceTrimEnabled`, `captionsEnabled`) and `renderer/src/styles.css`
+(class `auto-enhance-chip`).
 
 ### 3-Step Wizard
 

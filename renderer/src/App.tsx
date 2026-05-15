@@ -2218,11 +2218,42 @@ const App: React.FC = () => {
                       </div>
 
                       <div className="preview-block">
-                        <h3>One-click auto-enhance</h3>
+                        <h3>Auto-enhance</h3>
                         <p className="auto-enhance-tagline">
-                          Turn on every smart-assist feature in one click. Open the
-                          advanced section above to fine-tune individual options.
+                          Pick the smart-assist features you want. Click each chip
+                          to toggle it on or off, or use the buttons below to flip
+                          all of them at once. Open the advanced section above to
+                          tune their individual parameters.
                         </p>
+                        <div className="auto-enhance-chips">
+                          <button
+                            type="button"
+                            className={`auto-enhance-chip ${loudnormEnabled ? 'auto-enhance-chip-on' : ''}`}
+                            onClick={() => setLoudnormEnabled((v) => !v)}
+                            disabled={isMerging}
+                            aria-pressed={loudnormEnabled}
+                          >
+                            {loudnormEnabled ? '✓' : '○'} Loudness normalize
+                          </button>
+                          <button
+                            type="button"
+                            className={`auto-enhance-chip ${autoSilenceTrimEnabled ? 'auto-enhance-chip-on' : ''}`}
+                            onClick={() => setAutoSilenceTrimEnabled((v) => !v)}
+                            disabled={isMerging}
+                            aria-pressed={autoSilenceTrimEnabled}
+                          >
+                            {autoSilenceTrimEnabled ? '✓' : '○'} Silence auto-trim
+                          </button>
+                          <button
+                            type="button"
+                            className={`auto-enhance-chip ${captionsEnabled ? 'auto-enhance-chip-on' : ''}`}
+                            onClick={() => setCaptionsEnabled((v) => !v)}
+                            disabled={isMerging}
+                            aria-pressed={captionsEnabled}
+                          >
+                            {captionsEnabled ? '✓' : '○'} Auto-captions
+                          </button>
+                        </div>
                         <div className="auto-enhance-row">
                           <button
                             className="btn btn-primary auto-enhance-btn"
@@ -2237,7 +2268,7 @@ const App: React.FC = () => {
                             <span className="material-symbols-rounded vm-icon" aria-hidden="true">
                               auto_fix_high
                             </span>
-                            Enable all auto-features
+                            Enable all
                           </button>
                           <button
                             className="btn btn-secondary"
@@ -2254,25 +2285,8 @@ const App: React.FC = () => {
                                 !captionsEnabled)
                             }
                           >
-                            Reset
+                            Disable all
                           </button>
-                        </div>
-                        <div className="auto-enhance-chips">
-                          <span
-                            className={`auto-enhance-chip ${loudnormEnabled ? 'auto-enhance-chip-on' : ''}`}
-                          >
-                            {loudnormEnabled ? '✓' : '○'} Loudness normalize
-                          </span>
-                          <span
-                            className={`auto-enhance-chip ${autoSilenceTrimEnabled ? 'auto-enhance-chip-on' : ''}`}
-                          >
-                            {autoSilenceTrimEnabled ? '✓' : '○'} Silence auto-trim
-                          </span>
-                          <span
-                            className={`auto-enhance-chip ${captionsEnabled ? 'auto-enhance-chip-on' : ''}`}
-                          >
-                            {captionsEnabled ? '✓' : '○'} Auto-captions
-                          </span>
                         </div>
                       </div>
 
