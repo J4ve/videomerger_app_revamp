@@ -35,13 +35,6 @@ body {
   line-height: 1.45;
   color: #1f1f1f;
 }
-.cspc-header {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  height: auto;
-  margin: 0 0 14pt 0;
-}
 .cover-meta {
   line-height: 1.55;
   margin: 6pt 0 12pt;
