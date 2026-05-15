@@ -1537,33 +1537,32 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {ffmpegDetails && !ffmpegDetails.available && (
-          <div className="ffmpeg-banner ffmpeg-banner-error" role="alert">
-            <span className="material-symbols-rounded vm-icon" aria-hidden="true">
-              error
-            </span>
-            <div className="ffmpeg-banner-body">
-              <strong>FFmpeg not found.</strong> Merging is disabled until FFmpeg
-              is installed. Install from
-              {' '}
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  window.electronAPI.openExternal?.(
-                    'https://www.gyan.dev/ffmpeg/builds/',
-                  );
-                }}
-              >
-                gyan.dev (Windows)
-              </a>
-              {' '}
-              or your package manager, then restart the app.
-            </div>
-          </div>
-        )}
-
         <main className="wizard-main">
+          {ffmpegDetails && !ffmpegDetails.available && (
+            <div className="ffmpeg-banner ffmpeg-banner-error" role="alert">
+              <span className="material-symbols-rounded vm-icon" aria-hidden="true">
+                error
+              </span>
+              <div className="ffmpeg-banner-body">
+                <strong>FFmpeg not found.</strong> Merging is disabled until FFmpeg
+                is installed. Install from
+                {' '}
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.electronAPI.openExternal?.(
+                      'https://www.gyan.dev/ffmpeg/builds/',
+                    );
+                  }}
+                >
+                  gyan.dev (Windows)
+                </a>
+                {' '}
+                or your package manager, then restart the app.
+              </div>
+            </div>
+          )}
           {mergeComplete ? (
             <section className="panel success-panel fade-in">
               <h2>Merge complete 🎉</h2>

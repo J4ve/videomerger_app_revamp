@@ -4,6 +4,7 @@
   "description": "Desktop application for merging multiple videos using Electron + React + Python",
   "main": "dist/main/main.js",
   "scripts": {
+    "postinstall": "node scripts/install-ffmpeg.js",
     "dev": "concurrently -k -n vite,tsc,electron -c blue,yellow,green \"npm:dev:renderer\" \"npm:dev:main:watch\" \"npm:dev:main:run\"",
     "dev:renderer": "vite",
     "dev:main": "tsc -p tsconfig.main.json && cross-env NODE_ENV=development electron .",
