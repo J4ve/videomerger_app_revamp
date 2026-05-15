@@ -30,11 +30,16 @@ CSS = """
      overlaid on every page after the PDF is generated (e.g. when
      stamping the school letterhead in Word, Acrobat, or a separate
      image editor). Adjust the first value if the banner size changes. */
-  margin: 40mm 16mm 18mm 16mm;
+  margin: 22mm 16mm 18mm 16mm;
 }
+/* Pulled from Google Fonts at render time so the audit looks the same
+   on any machine. Arial Narrow ships with Microsoft Office, not Windows,
+   so falling back to it broke on systems without Office (which was the
+   case here). Roboto Condensed has near-identical metrics and is free. */
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;600;700&display=swap');
+
 body {
-  font-family: 'Arial Narrow', 'Liberation Sans Narrow', 'Helvetica Neue', Arial, sans-serif;
-  font-stretch: condensed;
+  font-family: 'Roboto Condensed', 'Arial Narrow', 'Liberation Sans Narrow', Arial, sans-serif;
   font-size: 11pt;
   line-height: 1.45;
   color: #1f1f1f;
@@ -65,6 +70,17 @@ table {
   width: 100%;
   margin: 8pt 0 12pt;
   font-size: 9.5pt;
+  /* Don't force a page break before a table that doesn't fit on the
+     current page; let it start where the prose stops and continue on
+     the next page. This keeps tall tables (e.g. the SE1-vs-SE2 row in
+     the executive summary) from being shoved entirely onto page 2. */
+}
+thead {
+  /* Repeat the header row when a table spans a page break so the
+     reader does not lose column labels mid-table. */
+  display: table-header-group;
+}
+tr {
   page-break-inside: avoid;
 }
 th, td {
