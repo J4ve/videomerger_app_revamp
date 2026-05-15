@@ -803,8 +803,29 @@ const App: React.FC = () => {
     setPreviewReloadToken((current) => current + 1);
   };
 
-  const handlePreviewPlaybackError = () => {
-    setStatus('Preview could not be played for this clip. The file may use an unsupported stream layout on this machine.');
+  const handlePreviewPlaybackError = (
+    event: React.SyntheticEvent<HTMLVideoElement>,
+  ) => {
+    const el = event.currentTarget;
+    const err = el.error;
+    const codeMap: Record<number, string> = {
+      1: 'aborted',
+      2: 'network',
+      3: 'decode',
+      4: 'src not supported (codec/container)',
+    };
+    const code = err?.code ?? 0;
+    const label = codeMap[code] || 'unknown';
+    const detail = err?.message ? ` — ${err.message}` : '';
+    console.error('[Preview] HTMLMediaError', {
+      code,
+      label,
+      message: err?.message,
+      src: el.currentSrc,
+    });
+    setStatus(
+      `Preview failed (${label}${detail}). Chromium may not decode this codec; merge can still process it via FFmpeg.`,
+    );
   };
 
   useEffect(() => {
@@ -1515,6 +1536,32 @@ const App: React.FC = () => {
             <div className={getStepCircleClass(3)}>3</div>
           </div>
         </div>
+
+        {ffmpegDetails && !ffmpegDetails.available && (
+          <div className="ffmpeg-banner ffmpeg-banner-error" role="alert">
+            <span className="material-symbols-rounded vm-icon" aria-hidden="true">
+              error
+            </span>
+            <div className="ffmpeg-banner-body">
+              <strong>FFmpeg not found.</strong> Merging is disabled until FFmpeg
+              is installed. Install from
+              {' '}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.electronAPI.openExternal?.(
+                    'https://www.gyan.dev/ffmpeg/builds/',
+                  );
+                }}
+              >
+                gyan.dev (Windows)
+              </a>
+              {' '}
+              or your package manager, then restart the app.
+            </div>
+          </div>
+        )}
 
         <main className="wizard-main">
           {mergeComplete ? (

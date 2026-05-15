@@ -1655,6 +1655,42 @@ body {
   }
 }
 
+/* ---------- FFmpeg banner ---------- */
+.ffmpeg-banner {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 18px 0;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  border: 1px solid transparent;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.ffmpeg-banner-error {
+  background: rgba(255, 106, 106, 0.10);
+  border-color: rgba(255, 106, 106, 0.45);
+  color: var(--danger-text);
+}
+
+.ffmpeg-banner .vm-icon {
+  font-size: 1.2rem;
+  margin-top: 1px;
+  flex: 0 0 auto;
+}
+
+.ffmpeg-banner-body {
+  flex: 1;
+}
+
+.ffmpeg-banner a {
+  color: var(--blue-400);
+  text-decoration: underline;
+}
+
 /* ---------- ClipEditPanel (Phase 1: per-clip edits) ---------- */
 .clip-edit-panel {
   background: var(--olive-850);

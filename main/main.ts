@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import * as http from 'http';
 import * as url from 'url';
+import { Readable } from 'stream';
 import { execFile, execSync } from 'child_process';
 import Store from 'electron-store';
 import { container } from '../core/container';
@@ -47,7 +48,65 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+const VIDEO_MIME_BY_EXT: Record<string, string> = {
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  mpg: 'video/mpeg',
+  mpeg: 'video/mpeg',
+  ts: 'video/mp2t',
+  m2ts: 'video/mp2t',
+  ogv: 'video/ogg',
+  '3gp': 'video/3gpp',
+  flv: 'video/x-flv',
+  wmv: 'video/x-ms-wmv',
+  vob: 'video/dvd',
+  mxf: 'application/mxf',
+};
+
+function mimeForFile(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
+  return VIDEO_MIME_BY_EXT[ext] || 'application/octet-stream';
+}
+
+function streamFileResponse(
+  filePath: string,
+  totalSize: number,
+  start: number,
+  end: number,
+  partial: boolean,
+): Response {
+  // createReadStream streams from disk; converting to a web ReadableStream
+  // lets Electron's protocol.handle pipe bytes to the renderer without
+  // ever allocating a Buffer the size of the whole video (which was the
+  // cause of "RangeError: Array buffer allocation failed" on large files).
+  const nodeStream = fs.createReadStream(filePath, { start, end });
+  const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
+
+  const headers: Record<string, string> = {
+    'Accept-Ranges': 'bytes',
+    'Content-Type': mimeForFile(filePath),
+    'Content-Length': String(end - start + 1),
+  };
+  if (partial) {
+    headers['Content-Range'] = `bytes ${start}-${end}/${totalSize}`;
+  }
+
+  return new Response(webStream, {
+    status: partial ? 206 : 200,
+    headers,
+  });
+}
+
 function registerLocalVideoProtocol(): void {
+  // Stream local video files in fixed-size chunks (default 1 MiB per request).
+  // HTML5 <video> issues Range requests for seeking, so 206 responses are the
+  // common path; the 200 fallback streams from disk for non-range requests.
+  const CHUNK_SIZE = 1024 * 1024;
+
   protocol.handle('local-video', async (request) => {
     try {
       const reqUrl = new url.URL(request.url);
@@ -57,22 +116,41 @@ function registerLocalVideoProtocol(): void {
       }
 
       const filePath = decodeURIComponent(encodedPath);
-      if (!fs.existsSync(filePath)) {
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(filePath);
+      } catch {
         return new Response('File not found', { status: 404 });
       }
-
-      const fileUrl = url.pathToFileURL(filePath).toString();
-      // Forward byte-range requests so HTML5 video seeking/switching remains stable.
-      const rangeHeader = request.headers.get('range');
-      if (rangeHeader) {
-        return net.fetch(fileUrl, {
-          headers: {
-            range: rangeHeader,
-          },
-        });
+      if (!stat.isFile()) {
+        return new Response('Not a file', { status: 400 });
       }
 
-      return net.fetch(fileUrl);
+      const total = stat.size;
+      const rangeHeader = request.headers.get('range');
+
+      if (rangeHeader) {
+        const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
+        if (!match) {
+          return new Response('Malformed Range header', { status: 416 });
+        }
+        const start = parseInt(match[1], 10);
+        const requestedEnd = match[2] ? parseInt(match[2], 10) : total - 1;
+        const cappedEnd = Math.min(
+          requestedEnd,
+          start + CHUNK_SIZE - 1,
+          total - 1,
+        );
+        if (Number.isNaN(start) || start >= total || cappedEnd < start) {
+          return new Response('Range not satisfiable', {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${total}` },
+          });
+        }
+        return streamFileResponse(filePath, total, start, cappedEnd, true);
+      }
+
+      return streamFileResponse(filePath, total, 0, total - 1, false);
     } catch {
       return new Response('Invalid local video request', { status: 400 });
     }
@@ -80,9 +158,29 @@ function registerLocalVideoProtocol(): void {
 }
 
 /**
+ * Resolve a binary path from one of the optional dev-dependency packages
+ * (ffmpeg-static, ffprobe-static). Returns null if the package is absent
+ * or its bundled binary cannot be located. Failure is silent so packaged
+ * builds (which exclude these dev-only fallbacks) keep working.
+ */
+function getStaticBinaryPath(pkg: 'ffmpeg-static' | 'ffprobe-static'): string | null {
+  try {
+    const mod = require(pkg);
+    const candidate: unknown = pkg === 'ffmpeg-static' ? mod : (mod as { path?: string }).path;
+    if (typeof candidate === 'string' && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  } catch {
+    // Package not installed in this build target — fine.
+  }
+  return null;
+}
+
+/**
  * Get the path to bundled FFmpeg binary
- * Checks resources/ffmpeg/ directory first (for packaged app)
- * Falls back to system PATH
+ * Checks resources/ffmpeg/ directory first (for packaged app), then the
+ * ffmpeg-static dev dependency (so a plain `npm install` is enough for
+ * contributors), then finally null so the system-PATH check takes over.
  */
 function getBundledFFmpegPath(): string | null {
   const ext = process.platform === 'win32' ? '.exe' : '';
@@ -97,7 +195,7 @@ function getBundledFFmpegPath(): string | null {
       return p;
     }
   }
-  return null;
+  return getStaticBinaryPath('ffmpeg-static');
 }
 
 /**
@@ -134,7 +232,7 @@ function getBundledFFprobePath(): string | null {
       return p;
     }
   }
-  return null;
+  return getStaticBinaryPath('ffprobe-static');
 }
 
 function resolveAppIconPath(): string | undefined {
