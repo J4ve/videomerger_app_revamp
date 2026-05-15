@@ -359,6 +359,180 @@ def _augment_edits_with_silence_trim(
         )
 
 
+# ---------- Caption helpers (Phase 4) ----------
+
+# SRT timestamp regex: HH:MM:SS,mmm --> HH:MM:SS,mmm
+_SRT_TIMESTAMP_RE = re.compile(
+    r'(?P<sh>\d+):(?P<sm>\d+):(?P<ss>\d+),(?P<sms>\d+)\s*-->\s*'
+    r'(?P<eh>\d+):(?P<em>\d+):(?P<es>\d+),(?P<ems>\d+)'
+)
+
+
+def _srt_to_seconds(h, m, s, ms):
+    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+
+
+def _seconds_to_srt_timestamp(seconds):
+    if seconds < 0:
+        seconds = 0.0
+    millis = int(round(seconds * 1000))
+    hours, rem = divmod(millis, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, ms = divmod(rem, 1000)
+    return f'{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}'
+
+
+def _parse_srt_blocks(srt_text):
+    """Parse SRT text into a list of (start_sec, end_sec, body_text) tuples.
+
+    Robust to: blank-line variability, missing index lines, Windows line
+    endings. Anything that doesn't match the timestamp regex is skipped.
+    """
+    blocks = []
+    current_start = None
+    current_end = None
+    current_body_lines = []
+
+    def flush():
+        nonlocal current_start, current_end, current_body_lines
+        if current_start is not None and current_end is not None:
+            body = '\n'.join(current_body_lines).strip()
+            if body:
+                blocks.append((current_start, current_end, body))
+        current_start = None
+        current_end = None
+        current_body_lines = []
+
+    for line in (srt_text or '').splitlines():
+        stripped = line.strip()
+        if not stripped:
+            flush()
+            continue
+        ts = _SRT_TIMESTAMP_RE.search(stripped)
+        if ts:
+            flush()
+            current_start = _srt_to_seconds(
+                ts.group('sh'), ts.group('sm'), ts.group('ss'), ts.group('sms'),
+            )
+            current_end = _srt_to_seconds(
+                ts.group('eh'), ts.group('em'), ts.group('es'), ts.group('ems'),
+            )
+            continue
+        # Pure-digit index lines come right before the timestamp; ignore
+        # them as long as we don't have a timestamp yet for this block.
+        if current_start is None and stripped.isdigit():
+            continue
+        if current_start is not None:
+            current_body_lines.append(line.rstrip())
+
+    flush()
+    return blocks
+
+
+def _offset_srt_blocks(blocks, offset_seconds):
+    """Shift every (start, end, body) tuple by ``offset_seconds``."""
+    return [
+        (max(0.0, s + offset_seconds), max(0.0, e + offset_seconds), body)
+        for (s, e, body) in blocks
+    ]
+
+
+def _concat_srt_blocks_to_text(all_blocks):
+    """Serialize a flat list of (start, end, body) tuples into SRT text with
+    sequential indices 1..N."""
+    out_lines = []
+    for index, (start, end, body) in enumerate(all_blocks, start=1):
+        out_lines.append(str(index))
+        out_lines.append(
+            f'{_seconds_to_srt_timestamp(start)} --> '
+            f'{_seconds_to_srt_timestamp(end)}'
+        )
+        out_lines.append(body)
+        out_lines.append('')
+    return '\n'.join(out_lines).rstrip() + '\n'
+
+
+def _build_merged_srt(per_clip_srt_paths, effective_durations):
+    """Stitch per-clip SRT files into one merged SRT string.
+
+    ``effective_durations`` are the post-trim durations in clip order;
+    each clip's blocks are shifted by the running accumulator so the
+    merged SRT timeline matches the merged video timeline.
+
+    Missing or unreadable SRTs are treated as no-captions for that clip
+    (the running offset still advances by the clip's effective duration).
+    """
+    merged_blocks = []
+    accumulated = 0.0
+    for index, srt_path in enumerate(per_clip_srt_paths):
+        if srt_path and os.path.exists(srt_path):
+            try:
+                with open(srt_path, 'r', encoding='utf-8') as fh:
+                    blocks = _parse_srt_blocks(fh.read())
+                merged_blocks.extend(_offset_srt_blocks(blocks, accumulated))
+            except OSError as exc:
+                print(
+                    f'WARNING: Could not read per-clip SRT {srt_path}: {exc}',
+                    file=sys.stderr,
+                )
+        accumulated += effective_durations[index] if index < len(effective_durations) else 0.0
+    return _concat_srt_blocks_to_text(merged_blocks)
+
+
+def _caption_script_path():
+    """Resolve the bundled caption_cli.py next to this file."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'caption_cli.py')
+
+
+def _transcribe_clip_to_srt(
+    input_path,
+    output_srt_path,
+    model='base',
+    language='auto',
+    compute_type='int8',
+    python_executable=None,
+):
+    """Invoke caption_cli.py for one clip. Returns True on success."""
+    python_executable = python_executable or sys.executable
+    script = _caption_script_path()
+    if not os.path.exists(script):
+        print(f'WARNING: caption_cli.py not found at {script}', file=sys.stderr)
+        return False
+
+    cmd = [
+        python_executable, '-u', script, '--transcribe',
+        '--input', input_path,
+        '--output', output_srt_path,
+        '--model', model,
+        '--language', language,
+        '--compute-type', compute_type,
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError as exc:
+        print(f'WARNING: Caption subprocess failed: {exc}', file=sys.stderr)
+        return False
+    if result.stdout:
+        # Surface model-load + transcription progress through merge log.
+        sys.stdout.write(result.stdout)
+    if result.returncode != 0:
+        print(
+            f'WARNING: Caption pass for {input_path} exited with '
+            f'code {result.returncode}',
+            file=sys.stderr,
+        )
+        if result.stderr:
+            sys.stderr.write(result.stderr)
+        return False
+    return True
+
+
 # ---------- Per-clip edit helpers (Phase 1) ----------
 
 ASPECT_PRESETS = {
@@ -573,6 +747,10 @@ def merge_videos(
     auto_silence_trim=False,
     silence_threshold_db=-50.0,
     silence_min_duration=0.5,
+    captions=False,
+    caption_model='base',
+    caption_language='auto',
+    caption_compute_type='int8',
 ):
     """Normalize clips and concatenate them into a single output video."""
     if len(input_paths) < 2:
@@ -739,6 +917,21 @@ def merge_videos(
 
             accumulated_duration += durations[index]
 
+        per_clip_srt_paths = []
+        if captions:
+            print('\nINFO: Generating captions per clip (faster-whisper)...')
+            for index, normalized in enumerate(normalized_files):
+                norm_full = os.path.join(temp_dir, normalized)
+                srt_path = os.path.join(temp_dir, f'norm_{index}.srt')
+                ok = _transcribe_clip_to_srt(
+                    norm_full,
+                    srt_path,
+                    model=caption_model,
+                    language=caption_language,
+                    compute_type=caption_compute_type,
+                )
+                per_clip_srt_paths.append(srt_path if ok else None)
+
         print('\nINFO: Starting Pass 2 (Zero-RAM fast concatenation)...')
         list_file_path = os.path.join(temp_dir, 'files.txt')
 
@@ -772,6 +965,18 @@ def merge_videos(
 
         if result.returncode == 0:
             print('PROGRESS: 100', flush=True)
+            if captions and per_clip_srt_paths:
+                merged_srt_path = os.path.splitext(output_path)[0] + '.srt'
+                merged_srt = _build_merged_srt(per_clip_srt_paths, durations)
+                try:
+                    with open(merged_srt_path, 'w', encoding='utf-8') as fh:
+                        fh.write(merged_srt)
+                    print(f'INFO: Wrote merged captions sidecar to {merged_srt_path}')
+                except OSError as exc:
+                    print(
+                        f'WARNING: Could not write merged SRT: {exc}',
+                        file=sys.stderr,
+                    )
             print(f'\nSUCCESS: Merged videos to {output_path}')
             return True
 
@@ -878,6 +1083,29 @@ def main():
         default=0.5,
         help='Minimum silence duration in seconds (default 0.5)',
     )
+    parser.add_argument(
+        '--captions',
+        action='store_true',
+        help=(
+            'Auto-transcribe each clip with faster-whisper and write a '
+            'merged .srt sidecar alongside the output video'
+        ),
+    )
+    parser.add_argument(
+        '--caption-model',
+        default='base',
+        help='faster-whisper model size (tiny / base / small / medium / large-v3)',
+    )
+    parser.add_argument(
+        '--caption-language',
+        default='auto',
+        help='ISO language code or "auto" to let Whisper detect',
+    )
+    parser.add_argument(
+        '--caption-compute-type',
+        default='int8',
+        help='faster-whisper compute_type (int8, int8_float16, float16, float32)',
+    )
 
     args = parser.parse_args()
 
@@ -925,6 +1153,10 @@ def main():
             auto_silence_trim=args.auto_silence_trim,
             silence_threshold_db=args.silence_threshold_db,
             silence_min_duration=args.silence_min_duration,
+            captions=args.captions,
+            caption_model=args.caption_model,
+            caption_language=args.caption_language,
+            caption_compute_type=args.caption_compute_type,
         )
         sys.exit(0 if success else 1)
 

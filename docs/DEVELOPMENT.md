@@ -514,6 +514,70 @@ Probe cost: ~1.5 seconds per clip on a fast disk (real-world measurement
 on a 42 s MP4 with `ffmpeg -af silencedetect -f null -`). Linear in clip
 count, additive to total merge time but not multiplicative.
 
+### Auto Captions (Phase 4, advanced settings)
+
+A third advanced-settings toggle, **Auto-generate captions (.srt sidecar,
+offline via faster-whisper)**, transcribes each normalized clip with
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper), concatenates
+the per-clip SRTs with running clip-offsets, and writes the result as
+`<merged-output>.srt` next to the merged video.
+
+The pipeline is built in two CLI modules:
+
+| Script | Job |
+|--------|-----|
+| `src/videomerger/caption_cli.py` | Standalone transcribe → SRT (one clip at a time). Importable on its own; the heavy `faster_whisper` import is paid only when this script runs, so plain merges stay fast. |
+| `src/videomerger/video_processor_cli.py` | Invokes `caption_cli.py` once per normalized clip via subprocess, then stitches the SRTs with `_build_merged_srt`. |
+
+#### Why per-clip, then stitch
+Transcribing the already-concatenated output once would be faster on
+paper, but every clip boundary becomes a potential transcription seam.
+Per-clip transcription on the normalized files gives Whisper clean,
+silence-bounded inputs and lets us reuse the per-clip durations we
+already track for progress reporting. The stitch pass adds the
+running offset to each block (no recompute needed).
+
+#### Model presets
+
+| Model | Approx size | Speed (CPU) | Use case |
+|-------|-------------|-------------|----------|
+| tiny | ~39 MB | fastest | Quick draft transcripts |
+| base | ~74 MB | balanced | Default |
+| small | ~244 MB | slower | Higher accuracy |
+| medium | ~769 MB | much slower | Production accuracy |
+| large-v3 | ~1.5 GB | slowest | Best accuracy, GPU recommended |
+
+The first transcription with each model downloads the weights into the
+Hugging Face cache (`~/.cache/huggingface/`). Subsequent transcriptions
+reuse the cached model. No network access is needed at merge time once
+the model is on disk.
+
+#### Language
+
+The UI exposes the most common Whisper-supported languages plus an
+**Auto-detect** option (passes through to faster-whisper, which detects
+the dominant language in the first 30 seconds of audio). The detected
+language and probability are surfaced in the merge log.
+
+#### Output
+
+A single `<merged-output>.srt` next to the merged `.mp4`. Burn-in
+captions (subtitled video) are a Phase 4b feature; the current sidecar
+approach lets the user keep / discard / edit captions without re-encoding.
+
+#### Interface + CLI
+
+- `IAutoCaptions` on `IVideoMergeOptions.captions` (TypeScript).
+- `--captions` (master) + `--caption-model` / `--caption-language` /
+  `--caption-compute-type` overrides in the Python CLI.
+
+#### Probe cost
+
+Linear in total speech duration. On a CPU with `compute_type=int8`,
+`base` model transcribes roughly real-time on modern hardware
+(e.g. 5 minutes of audio in ~5 minutes). Larger models scale roughly
+quadratically in size.
+
 ### 3-Step Wizard
 
 | Step | Name | Description |

@@ -289,6 +289,10 @@ const App: React.FC = () => {
   // Phase 3: auto-detect + trim leading/trailing silence per clip.
   const [autoSilenceTrimEnabled, setAutoSilenceTrimEnabled] = useState<boolean>(false);
   const [silenceThresholdDb, setSilenceThresholdDb] = useState<number>(-50);
+  // Phase 4: auto-captioning (faster-whisper local).
+  const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(false);
+  const [captionModel, setCaptionModel] = useState<string>('base');
+  const [captionLanguage, setCaptionLanguage] = useState<string>('auto');
   const [customResolution, setCustomResolution] = useState<string>('');
   const [customFps, setCustomFps] = useState<string>('30');
 
@@ -1159,6 +1163,15 @@ const App: React.FC = () => {
             autoSilenceTrim: {
               enabled: true,
               thresholdDb: silenceThresholdDb,
+            },
+          }
+        : {}),
+      ...(captionsEnabled
+        ? {
+            captions: {
+              enabled: true,
+              model: captionModel,
+              language: captionLanguage,
             },
           }
         : {}),
@@ -2131,6 +2144,74 @@ const App: React.FC = () => {
                                   <option value={-60}>-60 dB (gentle — trims only digital silence)</option>
                                 </select>
                               </label>
+                            )}
+                          </div>
+
+                          <div className="loudnorm-block" style={{ marginTop: 14 }}>
+                            <label className="loudnorm-toggle">
+                              <input
+                                type="checkbox"
+                                checked={captionsEnabled}
+                                onChange={(e) => setCaptionsEnabled(e.target.checked)}
+                                disabled={isMerging}
+                              />
+                              <span>
+                                Auto-generate captions (.srt sidecar, offline via faster-whisper)
+                              </span>
+                            </label>
+                            {captionsEnabled && (
+                              <>
+                                <label
+                                  className="advanced-standardization-field"
+                                  style={{ marginTop: 8 }}
+                                >
+                                  Model size
+                                  <select
+                                    className="std-select"
+                                    value={captionModel}
+                                    onChange={(e) => setCaptionModel(e.target.value)}
+                                    disabled={isMerging}
+                                  >
+                                    <option value="tiny">tiny (~39 MB, fastest, lowest accuracy)</option>
+                                    <option value="base">base (~74 MB, balanced default)</option>
+                                    <option value="small">small (~244 MB, more accurate)</option>
+                                    <option value="medium">medium (~769 MB, slower)</option>
+                                    <option value="large-v3">large-v3 (~1.5 GB, slowest, best)</option>
+                                  </select>
+                                </label>
+                                <label
+                                  className="advanced-standardization-field"
+                                  style={{ marginTop: 8 }}
+                                >
+                                  Language
+                                  <select
+                                    className="std-select"
+                                    value={captionLanguage}
+                                    onChange={(e) => setCaptionLanguage(e.target.value)}
+                                    disabled={isMerging}
+                                  >
+                                    <option value="auto">Auto-detect</option>
+                                    <option value="en">English</option>
+                                    <option value="fil">Filipino / Tagalog</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="fr">French</option>
+                                    <option value="de">German</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="ko">Korean</option>
+                                    <option value="zh">Chinese</option>
+                                  </select>
+                                </label>
+                                <p
+                                  style={{
+                                    margin: '6px 0 0',
+                                    fontSize: '0.78rem',
+                                    color: 'var(--olive-300)',
+                                  }}
+                                >
+                                  First use of each model downloads it (~MB shown above).
+                                  Output: <code>&lt;merged-output&gt;.srt</code> next to the video.
+                                </p>
+                              </>
                             )}
                           </div>
                         </details>

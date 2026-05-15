@@ -120,6 +120,33 @@ export interface IAutoSilenceTrim {
 }
 
 /**
+ * Faster-whisper model preset. Larger models are more accurate but
+ * download a larger file on first use and take longer to transcribe.
+ */
+export type CaptionModel =
+  | 'tiny'
+  | 'base'
+  | 'small'
+  | 'medium'
+  | 'large-v3';
+
+/**
+ * Auto-caption options. When enabled, each clip is transcribed via
+ * faster-whisper and a merged SRT sidecar is written alongside the
+ * output video with timestamps offset to the merged timeline.
+ */
+export interface IAutoCaptions {
+  /** Master switch. Defaults to false (no captions). */
+  enabled: boolean;
+  /** Whisper model size. Default `base` (~74 MB, balance of speed and accuracy). */
+  model?: CaptionModel;
+  /** ISO 639-1 language code or `auto` to detect. Default `auto`. */
+  language?: string;
+  /** faster-whisper compute_type. Default `int8` for CPU efficiency. */
+  computeType?: 'int8' | 'int8_float16' | 'float16' | 'float32';
+}
+
+/**
  * Video merge options
  */
 export interface IVideoMergeOptions {
@@ -137,6 +164,8 @@ export interface IVideoMergeOptions {
   loudnorm?: ILoudnessNormalization;
   /** Auto-detect + remove leading/trailing silence from each clip. */
   autoSilenceTrim?: IAutoSilenceTrim;
+  /** Auto-caption the merged output via faster-whisper, writes .srt sidecar. */
+  captions?: IAutoCaptions;
 }
 
 /**

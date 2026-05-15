@@ -229,6 +229,43 @@ describe('PythonFFmpegAdapter clipEdits handling', () => {
     expect(callArgs).not.toContain('--auto-silence-trim');
   });
 
+  it('forwards captions flags when captions.enabled is true', async () => {
+    const spawner = createMockSpawner();
+    const adapter = new PythonFFmpegAdapter(spawner, createConfig());
+
+    await adapter.mergeVideos({
+      inputPaths: ['a.mp4', 'b.mp4'],
+      outputPath: 'out.mp4',
+      captions: {
+        enabled: true,
+        model: 'small',
+        language: 'en',
+        computeType: 'int8',
+      },
+    });
+
+    const callArgs = (spawner.spawn as any).mock.calls[0][1] as string[];
+    expect(callArgs).toContain('--captions');
+    expect(callArgs[callArgs.indexOf('--caption-model') + 1]).toBe('small');
+    expect(callArgs[callArgs.indexOf('--caption-language') + 1]).toBe('en');
+    expect(callArgs[callArgs.indexOf('--caption-compute-type') + 1]).toBe('int8');
+  });
+
+  it('omits captions flags when captions.enabled is false', async () => {
+    const spawner = createMockSpawner();
+    const adapter = new PythonFFmpegAdapter(spawner, createConfig());
+
+    await adapter.mergeVideos({
+      inputPaths: ['a.mp4', 'b.mp4'],
+      outputPath: 'out.mp4',
+      captions: { enabled: false, model: 'base' },
+    });
+
+    const callArgs = (spawner.spawn as any).mock.calls[0][1] as string[];
+    expect(callArgs).not.toContain('--captions');
+    expect(callArgs).not.toContain('--caption-model');
+  });
+
   it('still cleans up the tempfile when the spawn rejects', async () => {
     let capturedJsonPath: string | undefined;
     const spawner: IProcessSpawner = {

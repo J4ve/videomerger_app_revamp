@@ -128,6 +128,19 @@ export class PythonFFmpegAdapter implements IFFmpegAdapter {
         }
       }
 
+      if (options.captions?.enabled) {
+        args.push('--captions');
+        if (options.captions.model) {
+          args.push('--caption-model', options.captions.model);
+        }
+        if (options.captions.language) {
+          args.push('--caption-language', options.captions.language);
+        }
+        if (options.captions.computeType) {
+          args.push('--caption-compute-type', options.captions.computeType);
+        }
+      }
+
       const result = await this.executePythonScript(args, onProgress, onProgress);
 
       if (result.exitCode === 0) {

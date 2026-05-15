@@ -342,6 +342,115 @@ class TestAugmentEditsWithSilenceTrim:
 
 
 @pytest.mark.unit
+class TestSrtParse:
+    def test_empty_input(self):
+        assert vp._parse_srt_blocks('') == []
+        assert vp._parse_srt_blocks(None) == []
+
+    def test_single_block(self):
+        srt = (
+            '1\n'
+            '00:00:01,500 --> 00:00:03,000\n'
+            'Hello world\n'
+        )
+        assert vp._parse_srt_blocks(srt) == [(1.5, 3.0, 'Hello world')]
+
+    def test_multiple_blocks(self):
+        srt = (
+            '1\n'
+            '00:00:00,000 --> 00:00:01,000\n'
+            'First\n'
+            '\n'
+            '2\n'
+            '00:00:01,000 --> 00:00:02,500\n'
+            'Second\n'
+        )
+        blocks = vp._parse_srt_blocks(srt)
+        assert blocks == [
+            (0.0, 1.0, 'First'),
+            (1.0, 2.5, 'Second'),
+        ]
+
+    def test_multiline_body(self):
+        srt = (
+            '1\n'
+            '00:00:00,000 --> 00:00:02,000\n'
+            'Line one\n'
+            'Line two\n'
+        )
+        blocks = vp._parse_srt_blocks(srt)
+        assert blocks == [(0.0, 2.0, 'Line one\nLine two')]
+
+    def test_skips_blocks_with_empty_body(self):
+        srt = (
+            '1\n'
+            '00:00:00,000 --> 00:00:01,000\n'
+            '\n'
+            '2\n'
+            '00:00:01,000 --> 00:00:02,000\n'
+            'Real text\n'
+        )
+        blocks = vp._parse_srt_blocks(srt)
+        # Block 1 has no body and should be dropped
+        assert blocks == [(1.0, 2.0, 'Real text')]
+
+
+@pytest.mark.unit
+class TestOffsetSrtBlocks:
+    def test_positive_offset_shifts_all(self):
+        blocks = [(0.0, 1.0, 'A'), (1.5, 2.5, 'B')]
+        shifted = vp._offset_srt_blocks(blocks, 10.0)
+        assert shifted == [(10.0, 11.0, 'A'), (11.5, 12.5, 'B')]
+
+    def test_negative_offset_clamped_to_zero(self):
+        blocks = [(0.0, 1.0, 'A')]
+        shifted = vp._offset_srt_blocks(blocks, -5.0)
+        # Both start and end clamp to 0 — caller decides what to do later
+        assert shifted == [(0.0, 0.0, 'A')]
+
+
+@pytest.mark.unit
+class TestBuildMergedSrt:
+    def test_no_inputs(self):
+        merged = vp._build_merged_srt([], [])
+        assert merged.strip() == ''
+
+    def test_concat_two_clips_offsets_second_by_first_duration(self, tmp_path):
+        srt_a = tmp_path / 'a.srt'
+        srt_a.write_text(
+            '1\n00:00:00,000 --> 00:00:01,000\nA1\n\n'
+            '2\n00:00:01,000 --> 00:00:02,000\nA2\n',
+            encoding='utf-8',
+        )
+        srt_b = tmp_path / 'b.srt'
+        srt_b.write_text(
+            '1\n00:00:00,000 --> 00:00:01,500\nB1\n',
+            encoding='utf-8',
+        )
+        merged = vp._build_merged_srt([str(srt_a), str(srt_b)], [2.0, 1.5])
+        # Clip A blocks land at 0..1 and 1..2; clip B starts at +2.0
+        assert '1\n00:00:00,000 --> 00:00:01,000\nA1' in merged
+        assert '2\n00:00:01,000 --> 00:00:02,000\nA2' in merged
+        assert '3\n00:00:02,000 --> 00:00:03,500\nB1' in merged
+
+    def test_missing_srt_advances_offset_without_blocks(self, tmp_path):
+        srt_b = tmp_path / 'b.srt'
+        srt_b.write_text(
+            '1\n00:00:00,000 --> 00:00:01,000\nOnly B\n',
+            encoding='utf-8',
+        )
+        merged = vp._build_merged_srt(
+            [None, str(srt_b)],   # first clip has no SRT
+            [3.0, 1.0],
+        )
+        # B's caption appears at +3.0 (first clip's duration), not at 0
+        assert '00:00:03,000 --> 00:00:04,000\nOnly B' in merged
+        # Only one numbered block in the output (starts with '1\n')
+        assert merged.startswith('1\n')
+        assert '\n2\n' not in merged
+
+
+@pytest.mark.unit
 class TestLoadClipEdits:
     def test_missing_path_returns_none(self):
         assert vp._load_clip_edits(None, ['a.mp4']) is None
